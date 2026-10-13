@@ -1,0 +1,3 @@
+{"op":"put","k":"user:1","v":{"name":"Aoba","score":10}}
+{"op":"del","k":"user:2"}
+{"op":"put","k":"cfg","v":[1,2,3]}
