@@ -13,12 +13,9 @@ class JackDB:
         self.log_length = 0
 
         if self.replay_path == "":
-            print("No replay provided, using empty dictionary...")
-            sys.exit(1)
-        else:
-            print(f"Replay file {replay_path} provided. Loading dictionary...")
-            self.replay_file = open(self.replay_path, "a+", encoding="utf-8")
-            self.load_from_file()
+            raise ValueError("replay_path is required")
+        self.replay_file = open(self.replay_path, "a+", encoding="utf-8")
+        self.load_from_file()
 
     def load_from_file(self):
         self.replay_file.seek(0)  # "a+" opens at EOF; replay must read from the start
@@ -50,7 +47,7 @@ class JackDB:
             key = record["k"]
             return self.do_get(key)
 
-        return None
+        raise ValueError
 
     def flush_logs(self):
         while self.log_length < len(self.records):
@@ -60,15 +57,11 @@ class JackDB:
         self.replay_file.flush()
 
     def do_put(self, key, value) -> str:
-        try:
-            self.data_dict[key] = value
-            return self.data_dict[key]
-        except KeyError:
-            return ""
+        self.data_dict[key] = value
+        return self.data_dict[key]
 
     def do_del(self, key) -> bool:
         """
-
         :param key:
         :return:
         """
@@ -78,14 +71,10 @@ class JackDB:
         except KeyError:
             return False
 
-    def do_get(self, key) -> str:
+    def do_get(self, key):
         """
-        Retrieve data from the database using it's key.
+        Retrieve the value stored under a key.
         :param key: Database key
-        :type key: str
-        :return: Not sure yet
+        :return: the value, or None if the key is missing
         """
-        try:
-            return self.data_dict[key]
-        except KeyError:
-            return ""
+        return self.data_dict.get(key)

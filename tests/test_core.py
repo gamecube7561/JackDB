@@ -8,6 +8,7 @@ def init_test():
     import shutil as sh
     sh.copy('./tests/test_file1.txt', './tests/test.txt')
 
+
 def test1():
     init_test()
     with tempfile.NamedTemporaryFile(mode="w+", suffix=".json") as temp_file:
@@ -22,6 +23,7 @@ def test2():
     init_test()
     jdb = JackDB('./tests/test.txt')
     return jdb.data_dict == test_items.TEST_PUT_OUTPUT
+
 
 def test3():
     init_test()
@@ -60,6 +62,7 @@ def run_tests():
 
     print("passed: ", passed, " failed: ", failed)
     print(f"failed : {failed_tests}")
+
 
 if __name__ == "__main__":
     run_tests()
