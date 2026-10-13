@@ -1,5 +1,3 @@
-import shutil
-
 from jackdb.main import JackDB
 import test_items
 import tempfile

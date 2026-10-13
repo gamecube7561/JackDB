@@ -1,4 +1,4 @@
-# simpledb / JackDB
+# JackDB
 
 A simple embedded key-value database implemented as a Python library. No
 dependencies — persistence is a JSON Lines append-only log you can read with
@@ -50,7 +50,7 @@ tests/test_items.py   # test fixtures
 Requires Python 3.14+ and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-uv sync --no-editable          # install (note: use --reinstall-package simpledb
+uv sync --no-editable          # install (note: use --reinstall-package JackDB
                                # after editing src/ — uv skips recopy otherwise)
 uv run --no-sync python tests/test_core.py
 ```
