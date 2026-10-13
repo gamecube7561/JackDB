@@ -29,7 +29,7 @@ def test3():
     init_test()
     jdb = JackDB('./tests/test.txt')
     jdb.do_operation(json.dumps(test_items.TEST_PUT_DATA2))
-    jdb.flush_logs()
+    jdb.commit()
     jdb.replay_file.close()
 
     # Acceptance: flushed record survives reopen (log-before-apply consistency)

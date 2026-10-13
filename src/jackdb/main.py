@@ -80,7 +80,7 @@ class JackDB:
 
         raise ValueError
 
-    def flush_logs(self):
+    def commit(self):
         """Append all pending records to the log file and flush it to disk.
 
         This is the commit point: a record mutated in memory only survives a
