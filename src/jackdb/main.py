@@ -6,7 +6,7 @@ from json import JSONDecodeError
 
 class JackDB:
     def __init__(self, replay_path: str = ""):
-        self.replay_file: TextIOWrapper = None
+        self.replay_file: TextIOWrapper
         self.data_dict = {}
         self.replay_path = replay_path
         self.records = []
@@ -49,12 +49,14 @@ class JackDB:
             key = record["k"]
             return self.do_get(key)
 
+        return None
+
     def flush_logs(self):
-        with open(self.replay_path, "+a") as f:
-            while self.log_length < len(self.records):
-                string_record = json.dumps(self.records[self.log_length])
-                f.write(string_record + '\n')
-                self.log_length += 1
+        while self.log_length < len(self.records):
+            string_record = json.dumps(self.records[self.log_length])
+            self.replay_file.write(string_record + '\n')
+            self.log_length += 1
+        self.replay_file.flush()
 
     def do_put(self, key, value) -> str:
         try:

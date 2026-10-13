@@ -17,4 +17,4 @@ uv.lock
 
 # Databases / local test logs
 *.db
-tests/test.txt.bak
+tests/test.txt
