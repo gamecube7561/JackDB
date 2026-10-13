@@ -36,13 +36,14 @@ class JackDB:
             record = json.loads(operation)
         else:
             record = operation
-        self.records.append(record)
 
         if record["op"] == "put":
+            self.records.append(record)
             key = record["k"]
             value = record["v"]
             return self.do_put(key, value)
         elif record["op"] == "del":
+            self.records.append(record)
             key = record["k"]
             return self.do_del(key)
         elif record["op"] == "get":
