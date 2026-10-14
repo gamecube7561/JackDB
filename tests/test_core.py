@@ -16,13 +16,20 @@ def test1():
         temp_file.write(temp_text)
         temp_file.flush()
         jdb = JackDB(str(temp_file.name))
-        return jdb.records[0] == test_items.TEST_PUT_DATA
+        if jdb.records[0] != test_items.TEST_PUT_DATA:
+            print(f"Test 3 \nexpected: {test_items.TEST_PUT_DATA}\ngot: {jdb.records[0]}")
+            return False
+        return True
 
 
 def test2():
     init_test()
     jdb = JackDB('./tests/test.txt')
-    return jdb.data_dict == test_items.TEST_PUT_OUTPUT
+    if jdb.data_dict != test_items.TEST_PUT_OUTPUT:
+        print(f"Test 2 \nexpected: {test_items.TEST_PUT_OUTPUT}\ngot: {jdb.data_dict}")
+        return False
+    return True
+
 
 
 def test3():
@@ -35,10 +42,32 @@ def test3():
     # Acceptance: flushed record survives reopen (log-before-apply consistency)
     reopened = JackDB('./tests/test.txt')
     expected = dict(test_items.TEST_PUT_OUTPUT)
-    expected['user3'] = test_items.TEST_PUT_DATA2['v']
-    result = reopened.data_dict == expected
+    expected['user:3'] = test_items.TEST_PUT_DATA2['v']
     reopened.replay_file.close()
-    return result
+
+    if reopened.data_dict != expected:
+        print(f"Test 3 \nexpected: {expected}\ngot: {reopened.data_dict}")
+        return False
+    return True
+
+def test4():
+    init_test()
+    jdb = JackDB('./tests/test.txt')
+    jdb.do_operation(json.dumps(test_items.TEST_PUT_DATA2))
+    jdb.do_operation(json.dumps(test_items.TEST_PUT_DATA3))
+
+    # Acceptance: the second put operation will supersede in the compacted log
+    jdb.commit()
+    jdb.compact()
+    jdb.replay_file.close()
+
+    reopened = JackDB('./tests/test.txt')
+    expected = dict(test_items.TEST_PUT_OUTPUT2)
+    reopened.replay_file.close()
+    if reopened.data_dict != expected:
+        print(f"Test 4 \nexpected: {expected}\ngot: {reopened.data_dict}")
+        return False
+    return True
 
 
 def run_tests():
@@ -47,7 +76,8 @@ def run_tests():
 
     functions = {'test1': test1(),
                  'test2': test2(),
-                 'test3': test3()
+                 'test3': test3(),
+                 'test4': test4(),
                  }
 
     failed_tests = []

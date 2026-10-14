@@ -1,5 +1,6 @@
 import json
-import sys
+import tempfile
+import os
 from io import TextIOWrapper
 from json import JSONDecodeError
 
@@ -31,22 +32,39 @@ class JackDB:
         self.replay_file = open(self.replay_path, "a+", encoding="utf-8")
         self.load_from_file()
 
-    def load_from_file(self):
+    def load_from_file(self) -> bool:
         """Replay the log file from the start into ``data_dict``.
 
         Stops at the first line that is not valid JSON (a torn final line),
         discarding it and everything after. Afterward ``log_length`` marks how
         many records were already persisted, so only new records get flushed.
+
+        :return: The success of loading the replay file.
         """
         self.replay_file.seek(0)  # "a+" opens at EOF; replay must read from the start
-        for line in self.replay_file:
+        with open(self.replay_path, "rb") as byte_file:
+            raw = byte_file.read()
+
+        offset = 0  # byte offset just past the last complete, valid record
+        for line in raw.split(b'\n'):
+            if line == b'':
+                break
             try:
-                record = json.loads(line)
-                self.do_operation(record)
+                self.do_operation(json.loads(line))
+                offset += len(line) + 1  # +1 for the '\n'
             except JSONDecodeError:
                 break
 
-        self.log_length = len(self.records)
+        torn = offset < len(raw)
+        if torn:
+            # Truncate the fragment (and anything after it) so the file ends
+            # cleanly after the last valid record; otherwise the next append
+            # would merge onto the torn line and be lost on reopen.
+            with open(self.replay_path, "r+b") as byte_file:
+                byte_file.truncate(offset)
+
+        self.log_length = len(self.records)  # these records are already persisted
+        return not torn
 
     def do_operation(self, operation):
         """Execute one database operation given as a dict or a JSON string.
@@ -122,3 +140,41 @@ class JackDB:
         :return: The value, or None if the key is missing.
         """
         return self.data_dict.get(key)
+
+    def compact(self):
+        """Rewrite the log as one ``put`` record per live key, dropping
+        tombstones and superseded records.
+
+        Also commits: ``data_dict`` already includes unflushed mutations.
+
+        :raises OSError: If the log directory is unwritable, the disk is full,
+            or the atomic swap fails. The old log is left untouched.
+        :raises TypeError: If a stored value is not JSON-serializable.
+        """
+        temp_name = ""
+        new_records = []
+        try:
+            temp_file = tempfile.NamedTemporaryFile(
+                mode="w", dir=os.path.dirname(self.replay_path) or ".",
+                prefix="jackdb-compact-", suffix=".json", delete=False
+            )
+            temp_name = temp_file.name
+            try:
+                for key, value in self.data_dict.items():
+                    temp_record = {"op": "put", "k": key, "v": value}
+                    new_records.append(temp_record)
+                    temp_file.write(json.dumps(temp_record) + '\n')
+                temp_file.flush()
+                os.fsync(temp_file.fileno())
+            finally:
+                temp_file.close()
+            os.replace(temp_name, self.replay_path)
+        except Exception:
+            if temp_name and os.path.exists(temp_name):
+                os.remove(temp_name)
+            raise
+
+        self.replay_file.close()
+        self.replay_file = open(self.replay_path, "a+", encoding="utf-8")
+        self.records = new_records
+        self.log_length = len(new_records)
