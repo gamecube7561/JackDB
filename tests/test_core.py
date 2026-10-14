@@ -10,6 +10,10 @@ def init_test():
 
 
 def test1():
+    """
+    Test 1: File loading
+    :return:
+    """
     init_test()
     with tempfile.NamedTemporaryFile(mode="w+", suffix=".json") as temp_file:
         temp_text = json.dumps(test_items.TEST_PUT_DATA)
@@ -23,6 +27,10 @@ def test1():
 
 
 def test2():
+    """
+    Test 2: More advanced file loading
+    :return:
+    """
     init_test()
     jdb = JackDB('./tests/test.txt')
     if jdb.data_dict != test_items.TEST_PUT_OUTPUT:
@@ -31,8 +39,11 @@ def test2():
     return True
 
 
-
 def test3():
+    """
+    Test 3: Performing operation and commiting to log.
+    :return:
+    """
     init_test()
     jdb = JackDB('./tests/test.txt')
     jdb.do_operation(json.dumps(test_items.TEST_PUT_DATA2))
@@ -50,7 +61,12 @@ def test3():
         return False
     return True
 
+
 def test4():
+    """
+    Test 4: compact output where later entries should supersede previous entries with the same key.
+    :return:
+    """
     init_test()
     jdb = JackDB('./tests/test.txt')
     jdb.do_operation(json.dumps(test_items.TEST_PUT_DATA2))
@@ -90,8 +106,11 @@ def run_tests():
             failed += 1
             failed_tests.append(fun)
 
-    print("passed: ", passed, " failed: ", failed)
-    print(f"failed : {failed_tests}")
+    print("Passed: ", passed, "\nFailed: ", failed)
+    if len(failed_tests) == 0:
+        print("No tests failed")
+    else:
+        print(f"Failed : {failed_tests}")
 
 
 if __name__ == "__main__":
