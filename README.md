@@ -8,19 +8,22 @@ any text editor.
 
 Every mutation is appended to a log file as one JSON record per line:
 
-```json
+```json lines
 {"op":"put","k":"user:1","v":{"name":"Aoba","score":10}}
 {"op":"del","k":"user:2"}
 {"op":"put","k":"cfg","v":[1,2,3]}
+{"op":"set","k":"user:1","f":"state","v":"NY"}
 ```
 
-- `put` stores a value under a key; `del` is a tombstone that removes a key.
+- `put` stores a value under a key.
+- `del` is a tombstone that removes a key.
+- `get` is read-only — it never writes to the log.
+- `set` stores a value in a specific field of a already populated key.
 - On open, the log is replayed in order — later records win — building an
   in-memory dictionary.
 - A torn final line (e.g. from a crash mid-write) is detected, discarded, and
   truncated away, so the log always ends cleanly after the last valid record;
   the database always opens to a consistent prefix of the log.
-- `get` is read-only — it never writes to the log.
 
 ## Usage
 
@@ -31,9 +34,9 @@ db = JackDB("./mydb.log")  # opens (or creates) the log and replays it
 
 db.do_operation('{"op":"put","k":"user:1","v":{"name":"Aoba","score":10}}')
 db.do_operation('{"op":"get","k":"user:1"}')  # returns the value (None if missing)
+db.do_operation('{"op":"set","k":"user:1","f":"state","v":"NY"}') # sets value of the state field in user:1
 db.do_operation('{"op":"del","k":"user:1"}')  # tombstone
 db.commit()  # append pending records to the log + flush
-db.replay_file.close()
 ```
 
 Keys and values are anything `json.dumps` accepts (dicts, lists, strings,
