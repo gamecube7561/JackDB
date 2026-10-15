@@ -2,9 +2,9 @@
 import tempfile
 import json
 import shutil
+import test_items
 
 from jackdb import JackDB
-import test_items
 
 
 def init_test():
