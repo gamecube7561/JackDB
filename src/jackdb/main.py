@@ -1,3 +1,4 @@
+"""Module containing the JackDB class."""
 import json
 import tempfile
 import os
@@ -29,10 +30,10 @@ class JackDB:
 
         if self.replay_path == "":
             raise ValueError("replay_path is required")
-        self.replay_file = open(self.replay_path, "a+", encoding="utf-8")
+
         self.load_from_file()
 
-    def load_from_file(self) -> bool:
+    def load_from_file(self, ) -> bool:
         """Replay the log file from the start into ``data_dict``.
 
         Stops at the first line that is not valid JSON (a torn final line),
@@ -41,30 +42,31 @@ class JackDB:
 
         :return: The success of loading the replay file.
         """
-        self.replay_file.seek(0)  # "a+" opens at EOF; replay must read from the start
-        with open(self.replay_path, "rb") as byte_file:
-            raw = byte_file.read()
+        with open(self.replay_path, "a+", encoding="utf-8") as replay_file:
+            replay_file.seek(0)  # "a+" opens at EOF; replay must read from the start
+            with open(self.replay_path, "rb") as byte_file:
+                raw = byte_file.read()
 
-        offset = 0  # byte offset just past the last complete, valid record
-        for line in raw.split(b'\n'):
-            if line == b'':
-                break
-            try:
-                self.do_operation(json.loads(line))
-                offset += len(line) + 1  # +1 for the '\n'
-            except JSONDecodeError:
-                break
+            offset = 0  # byte offset just past the last complete, valid record
+            for line in raw.split(b'\n'):
+                if line == b'':
+                    break
+                try:
+                    self.do_operation(json.loads(line))
+                    offset += len(line) + 1  # +1 for the '\n'
+                except JSONDecodeError:
+                    break
 
-        torn = offset < len(raw)
-        if torn:
-            # Truncate the fragment (and anything after it) so the file ends
-            # cleanly after the last valid record; otherwise the next append
-            # would merge onto the torn line and be lost on reopen.
-            with open(self.replay_path, "r+b") as byte_file:
-                byte_file.truncate(offset)
+            torn = offset < len(raw)
+            if torn:
+                # Truncate the fragment (and anything after it) so the file ends
+                # cleanly after the last valid record; otherwise the next append
+                # would merge onto the torn line and be lost on reopen.
+                with open(self.replay_path, "r+b") as byte_file:
+                    byte_file.truncate(offset)
 
-        self.log_length = len(self.records)  # these records are already persisted
-        return not torn
+            self.log_length = len(self.records)  # these records are already persisted
+            return not torn
 
     def do_operation(self, operation):
         """Execute one database operation given as a dict or a JSON string.
@@ -88,11 +90,13 @@ class JackDB:
             key = record["k"]
             value = record["v"]
             return self.do_put(key, value)
-        elif record["op"] == "del":
+
+        if record["op"] == "del":
             self.records.append(record)
             key = record["k"]
             return self.do_del(key)
-        elif record["op"] == "get":
+
+        if record["op"] == "get":
             key = record["k"]
             return self.do_get(key)
 
@@ -105,11 +109,12 @@ class JackDB:
         crash or reopen once it has been flushed. Already-persisted records
         (up to ``log_length``) are never written twice.
         """
-        while self.log_length < len(self.records):
-            string_record = json.dumps(self.records[self.log_length])
-            self.replay_file.write(string_record + '\n')
-            self.log_length += 1
-        self.replay_file.flush()
+        with open(self.replay_path, "a+", encoding="utf-8") as replay_file:
+            while self.log_length < len(self.records):
+                string_record = json.dumps(self.records[self.log_length])
+                replay_file.write(string_record + '\n')
+                self.log_length += 1
+            replay_file.flush()
 
     def do_put(self, key, value):
         """Store ``value`` under ``key``, overwriting any existing value.
@@ -154,27 +159,25 @@ class JackDB:
         temp_name = ""
         new_records = []
         try:
-            temp_file = tempfile.NamedTemporaryFile(
-                mode="w", dir=os.path.dirname(self.replay_path) or ".",
-                prefix="jackdb-compact-", suffix=".json", delete=False
-            )
-            temp_name = temp_file.name
-            try:
-                for key, value in self.data_dict.items():
-                    temp_record = {"op": "put", "k": key, "v": value}
-                    new_records.append(temp_record)
-                    temp_file.write(json.dumps(temp_record) + '\n')
-                temp_file.flush()
-                os.fsync(temp_file.fileno())
-            finally:
-                temp_file.close()
-            os.replace(temp_name, self.replay_path)
+            with tempfile.NamedTemporaryFile(
+                    mode="w", dir=os.path.dirname(self.replay_path) or ".",
+                    prefix="jackdb-compact-", suffix=".json", delete=False
+            ) as temp_file:
+                temp_name = temp_file.name
+                try:
+                    for key, value in self.data_dict.items():
+                        temp_record = {"op": "put", "k": key, "v": value}
+                        new_records.append(temp_record)
+                        temp_file.write(json.dumps(temp_record) + '\n')
+                    temp_file.flush()
+                    os.fsync(temp_file.fileno())
+                finally:
+                    temp_file.close()
+                os.replace(temp_name, self.replay_path)
         except Exception:
             if temp_name and os.path.exists(temp_name):
                 os.remove(temp_name)
             raise
 
-        self.replay_file.close()
-        self.replay_file = open(self.replay_path, "a+", encoding="utf-8")
         self.records = new_records
         self.log_length = len(new_records)

@@ -1,5 +1,6 @@
+"""Init file for the jackdb package"""
 from .main import JackDB
 
-version = "0.1.0"
+VERSION = "0.1.0"
 
-__version__ = version
+__version__ = VERSION

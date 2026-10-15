@@ -1,3 +1,4 @@
+"""Contains items used by the tests."""
 TEST_PUT_DATA = {
     'op': 'put',
     'k': 'user:1',

@@ -1,12 +1,18 @@
-from jackdb.main import JackDB
-import test_items
+"""Driver for the tests."""
 import tempfile
 import json
+import shutil
+
+from jackdb import JackDB
+import test_items
 
 
 def init_test():
-    import shutil as sh
-    sh.copy('./tests/test_file1.txt', './tests/test.txt')
+    """
+    Initialize the test text file
+    :return:
+    """
+    shutil.copy('./tests/test_file1.txt', './tests/test.txt')
 
 
 def test1():
@@ -48,13 +54,11 @@ def test3():
     jdb = JackDB('./tests/test.txt')
     jdb.do_operation(json.dumps(test_items.TEST_PUT_DATA2))
     jdb.commit()
-    jdb.replay_file.close()
 
     # Acceptance: flushed record survives reopen (log-before-apply consistency)
     reopened = JackDB('./tests/test.txt')
     expected = dict(test_items.TEST_PUT_OUTPUT)
     expected['user:3'] = test_items.TEST_PUT_DATA2['v']
-    reopened.replay_file.close()
 
     if reopened.data_dict != expected:
         print(f"Test 3 \nexpected: {expected}\ngot: {reopened.data_dict}")
@@ -75,11 +79,10 @@ def test4():
     # Acceptance: the second put operation will supersede in the compacted log
     jdb.commit()
     jdb.compact()
-    jdb.replay_file.close()
 
     reopened = JackDB('./tests/test.txt')
     expected = dict(test_items.TEST_PUT_OUTPUT2)
-    reopened.replay_file.close()
+
     if reopened.data_dict != expected:
         print(f"Test 4 \nexpected: {expected}\ngot: {reopened.data_dict}")
         return False
@@ -87,6 +90,7 @@ def test4():
 
 
 def run_tests():
+    """Runs the tests."""
     passed = 0
     failed = 0
 
@@ -98,13 +102,13 @@ def run_tests():
 
     failed_tests = []
 
-    for fun in functions:
+    for function_name, did_pass in functions.items():
 
-        if functions[fun]:
+        if did_pass:
             passed += 1
         else:
             failed += 1
-            failed_tests.append(fun)
+            failed_tests.append(function_name)
 
     print("Passed: ", passed, "\nFailed: ", failed)
     if len(failed_tests) == 0:
