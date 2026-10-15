@@ -100,6 +100,13 @@ class JackDB:
             key = record["k"]
             return self.do_get(key)
 
+        if record["op"] == "set":
+            self.records.append(record)
+            key = record["k"]
+            field = record["f"]
+            value = record["v"]
+            return self.do_set(key, field, value)
+
         raise ValueError
 
     def commit(self):
@@ -145,6 +152,25 @@ class JackDB:
         :return: The value, or None if the key is missing.
         """
         return self.data_dict.get(key)
+
+    def do_set(self, key, field, value):
+        """
+        Set a field of an already existing entry. Allowing for partial updates.
+
+        :param key: Database key.
+        :param field: Field key.
+        :param value: The value.
+        :return:
+        """
+
+        try:
+            db_data = self.data_dict[key]
+            if isinstance(db_data, dict):
+                db_data[field] = value
+            self.data_dict[key] = db_data
+            return self.data_dict[key]
+        except Exception as e:
+            raise ValueError("Error when performing set.") from e
 
     def compact(self):
         """Rewrite the log as one ``put`` record per live key, dropping

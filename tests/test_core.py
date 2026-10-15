@@ -89,6 +89,24 @@ def test4():
     return True
 
 
+def test5():
+    """
+    Test 5: Using the set option.
+    :return:
+    """
+    init_test()
+    jdb = JackDB('./tests/test.txt')
+    jdb.do_operation(json.dumps(test_items.TEST_PUT_DATA2))
+    jdb.do_operation(json.dumps(test_items.TEST_PUT_DATA3))
+    jdb.do_operation(json.dumps(test_items.TEST_SET_DATA1))
+
+    expected = dict(test_items.TEST_PUT_OUTPUT3)
+    if jdb.data_dict != expected:
+        print(f"Test 5 \nexpected: {expected}\ngot: {jdb.data_dict}")
+        return False
+    return True
+
+
 def run_tests():
     """Runs the tests."""
     passed = 0
@@ -98,6 +116,7 @@ def run_tests():
                  'test2': test2(),
                  'test3': test3(),
                  'test4': test4(),
+                 'test5': test5()
                  }
 
     failed_tests = []

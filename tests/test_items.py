@@ -33,6 +33,13 @@ TEST_PUT_DATA3 = {
     }
 }
 
+TEST_SET_DATA1 = {
+    'op': 'set',
+    'k': 'user:3',
+    'f': 'state',
+    'v': 'NY'
+}
+
 TEST_PUT_OUTPUT2 = {
     'user:1': {
         'name': 'Aoba',
@@ -41,5 +48,17 @@ TEST_PUT_OUTPUT2 = {
     'user:3': {
         'name': 'Aoba',
         'score': 20
+    },
+    'cfg': [1, 2, 3]}
+
+TEST_PUT_OUTPUT3 = {
+    'user:1': {
+        'name': 'Aoba',
+        'score': 10
+    },
+    'user:3': {
+        'name': 'Aoba',
+        'score': 20,
+        'state': 'NY'
     },
     'cfg': [1, 2, 3]}
