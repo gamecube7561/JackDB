@@ -91,7 +91,7 @@ class JackDB:
         so a lock held on the log file itself would not exclude writers that
         open the new inode.
         """
-        with open(self.replay_path + ".lock", "a+") as lock_file:
+        with open(self.replay_path + ".lock", "a+", encoding='utf-8') as lock_file:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
             try:
                 yield
@@ -113,7 +113,8 @@ class JackDB:
         away (the writer already counted it as persisted).
         """
         with self._log_lock():
-            open(self.replay_path, "a+", encoding="utf-8").close()  # create if missing
+            with open(self.replay_path, "a+", encoding="utf-8") as f:
+                f.close()
             self.records = []  # rebuilt below: ``records`` mirrors the file
             self.log_length, torn = self._replay_log(journal=True)
             return not torn
