@@ -5,6 +5,7 @@ import shutil
 import test_items
 
 from jackdb import JackDB
+from jackdb.exceptions import JdbException
 
 
 def init_test():
@@ -127,6 +128,20 @@ def test6():
     return True
 
 
+def test7():
+    """
+    Test 7: Bad operation error handling.
+    :return:
+    """
+    init_test()
+    jdb = JackDB('./tests/test.txt')
+    try:
+        jdb.do_operation(json.dumps(test_items.TEST_BAD_OPERATION))
+    except JdbException:
+        return True
+    return False
+
+
 def run_tests():
     """Runs the tests."""
     passed = 0
@@ -137,7 +152,8 @@ def run_tests():
                  'test3': test3(),
                  'test4': test4(),
                  'test5': test5(),
-                 'test6': test6()
+                 'test6': test6(),
+                 'test7': test7()
                  }
 
     failed_tests = []
