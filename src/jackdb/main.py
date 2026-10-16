@@ -4,6 +4,7 @@ import tempfile
 import os
 from io import TextIOWrapper
 from json import JSONDecodeError
+from jackdb.exceptions import JdbException
 
 
 class JackDB:
@@ -177,15 +178,13 @@ class JackDB:
         :param value: The value.
         :return:
         """
+        db_data = self.data_dict[key]
+        if not isinstance(db_data, dict):
+            raise JdbException("Field must contain JSON data.", 1)
+        db_data[field] = value
+        self.data_dict[key] = db_data
 
-        try:
-            db_data = self.data_dict[key]
-            if isinstance(db_data, dict):
-                db_data[field] = value
-            self.data_dict[key] = db_data
-            return self.data_dict[key]
-        except Exception as e:
-            raise ValueError("Error when performing set.") from e
+        return self.data_dict[key]
 
     def compact(self):
         """Rewrite the log as one ``put`` record per live key, dropping
