@@ -18,7 +18,7 @@ Every mutation is appended to a log file as one JSON record per line:
 - `put` stores a value under a key.
 - `del` is a tombstone that removes a key.
 - `get` is read-only — it never writes to the log.
-- `set` stores a value in a specific field of a already populated key.
+- `set` stores a value in a specific field of an already populated key.
 - On open, the log is replayed in order — later records win — building an
   in-memory dictionary.
 - A torn final line (e.g. from a crash mid-write) is detected, discarded, and
