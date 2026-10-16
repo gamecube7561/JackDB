@@ -132,6 +132,7 @@ class JackDB:
                 replay_file.write(string_record + '\n')
                 self.log_length += 1
             replay_file.flush()
+            os.fsync(replay_file.fileno())
 
     def do_put(self, key, value):
         """Store ``value`` under ``key``, overwriting any existing value.
