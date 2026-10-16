@@ -118,12 +118,14 @@ def test6():
     jdb.do_operation(json.dumps(test_items.TEST_PUT_DATA3))
     jdb.do_operation(json.dumps(test_items.TEST_SET_DATA1))
 
-    expected = [('user:1', test_items.TEST_PUT_OUTPUT3['user:1']),('user:3', test_items.TEST_PUT_OUTPUT3['user:3'])]
+    expected = [('user:1', test_items.TEST_PUT_OUTPUT3['user:1']),
+                ('user:3', test_items.TEST_PUT_OUTPUT3['user:3'])]
     result = jdb.do_operation(test_items.TEST_GET_MANY1)
     if result != expected:
         print(f"Test 6 \nexpected: {expected}\ngot: {result}")
         return False
     return True
+
 
 def run_tests():
     """Runs the tests."""
