@@ -1,7 +1,7 @@
 [project]
 name = "JackDB"
 version = "0.1.0"
-requires-python = ">=3.14"
+requires-python = ">=3.10"
 dependencies = []
 
 [build-system]
@@ -10,3 +10,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pylint.main]
+# Work around Python 3.14 skipping uv's hidden-flagged editable-install .pth.
+init-hook = 'import sys, os; p = os.path.join(os.getcwd(), "src"); sys.path.insert(0, p) if os.path.isdir(p) and p not in sys.path else None'

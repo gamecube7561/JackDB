@@ -75,7 +75,7 @@ tests/test_items.py   # test fixtures
 
 ## Development
 
-Requires Python 3.14+ and [uv](https://docs.astral.sh/uv/).
+Requires Python 3.10+ and [uv](https://docs.astral.sh/uv/).
 
 ```bash
 uv sync --no-editable          # install (note: use --reinstall-package JackDB
