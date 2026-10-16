@@ -2,8 +2,8 @@
 import tempfile
 import json
 import shutil
+from pathlib import Path
 import test_items
-
 from jackdb import JackDB
 from jackdb.exceptions import JdbException
 
@@ -14,6 +14,15 @@ def init_test():
     :return:
     """
     shutil.copy('./tests/test_file1.txt', './tests/test.txt')
+
+
+def teardown_test():
+    """
+    Test Cleanup.
+    :return:
+    """
+    Path('./tests/test.txt.lock').unlink(missing_ok=True)
+    Path('./tests/test.txt').unlink(missing_ok=True)
 
 
 def test1():
@@ -141,6 +150,7 @@ def test7():
         return True
     return False
 
+
 def test8():
     """
     Test 8: Allow to open JackDB using with-as.
@@ -158,6 +168,7 @@ def test8():
             return True
     except JdbException:
         return False
+
 
 def run_tests():
     """Runs the tests."""
@@ -183,6 +194,7 @@ def run_tests():
         else:
             failed += 1
             failed_tests.append(function_name)
+        teardown_test()
 
     print("Passed: ", passed, "\nFailed: ", failed)
     if len(failed_tests) == 0:
