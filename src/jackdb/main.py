@@ -100,6 +100,10 @@ class JackDB:
             key = record["k"]
             return self.do_get(key)
 
+        if record["op"] == "get_many":
+            keys = record["k"]
+            return self.do_get_many(keys)
+
         if record["op"] == "set":
             self.records.append(record)
             key = record["k"]
@@ -153,9 +157,20 @@ class JackDB:
         """
         return self.data_dict.get(key)
 
-    def do_set(self, key, field, value):
+    def do_get_many(self, keys):
+        """Retrieve values in bulk.
+
+        :param keys: Array of database keys.
+        :return: Tuple containing key and value.
         """
-        Set a field of an already existing entry. Allowing for partial updates.
+        results = []
+        for key in keys:
+            result = (key, self.data_dict.get(key))
+            results.append(result)
+        return results
+
+    def do_set(self, key, field, value):
+        """Set a field of an already existing entry. Allowing for partial updates.
 
         :param key: Database key.
         :param field: Field key.

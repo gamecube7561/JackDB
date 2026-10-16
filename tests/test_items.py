@@ -40,6 +40,11 @@ TEST_SET_DATA1 = {
     'v': 'NY'
 }
 
+TEST_GET_MANY1 = {
+    'op': 'get_many',
+    'k': ['user:1', 'user:3']
+}
+
 TEST_PUT_OUTPUT2 = {
     'user:1': {
         'name': 'Aoba',

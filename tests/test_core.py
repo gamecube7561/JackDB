@@ -107,6 +107,24 @@ def test5():
     return True
 
 
+def test6():
+    """
+    Test 6: Using the get_many option.
+    :return:
+    """
+    init_test()
+    jdb = JackDB('./tests/test.txt')
+    jdb.do_operation(json.dumps(test_items.TEST_PUT_DATA2))
+    jdb.do_operation(json.dumps(test_items.TEST_PUT_DATA3))
+    jdb.do_operation(json.dumps(test_items.TEST_SET_DATA1))
+
+    expected = [('user:1', test_items.TEST_PUT_OUTPUT3['user:1']),('user:3', test_items.TEST_PUT_OUTPUT3['user:3'])]
+    result = jdb.do_operation(test_items.TEST_GET_MANY1)
+    if result != expected:
+        print(f"Test 6 \nexpected: {expected}\ngot: {result}")
+        return False
+    return True
+
 def run_tests():
     """Runs the tests."""
     passed = 0
@@ -116,7 +134,8 @@ def run_tests():
                  'test2': test2(),
                  'test3': test3(),
                  'test4': test4(),
-                 'test5': test5()
+                 'test5': test5(),
+                 'test6': test6()
                  }
 
     failed_tests = []
