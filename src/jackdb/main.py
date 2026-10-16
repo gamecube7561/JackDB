@@ -44,6 +44,13 @@ class JackDB:
 
         self.load_from_file()
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.commit()
+        return False
+
     def load_from_file(self, ) -> bool:
         """Replay the log file from the start into ``data_dict``.
 

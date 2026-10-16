@@ -141,6 +141,23 @@ def test7():
         return True
     return False
 
+def test8():
+    """
+    Test 8: Allow to open JackDB using with-as.
+    :return:
+    """
+    init_test()
+    try:
+        with JackDB('./tests/test.txt') as jdb:
+            jdb.do_operation(json.dumps(test_items.TEST_PUT_DATA2))
+            jdb.do_operation(json.dumps(test_items.TEST_PUT_DATA3))
+
+            jdb.commit()
+            jdb.compact()
+
+            return True
+    except JdbException:
+        return False
 
 def run_tests():
     """Runs the tests."""
@@ -153,7 +170,8 @@ def run_tests():
                  'test4': test4(),
                  'test5': test5(),
                  'test6': test6(),
-                 'test7': test7()
+                 'test7': test7(),
+                 'test8': test8()
                  }
 
     failed_tests = []
