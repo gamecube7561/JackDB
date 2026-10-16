@@ -6,6 +6,16 @@ from io import TextIOWrapper
 from json import JSONDecodeError
 from jackdb.exceptions import JdbException
 
+OPERATION_SPECS = {
+    # op: (required fields, journaled, handler)
+    "put": (("k", "v"), True, "do_put"),
+    "del": (("k",), True, "do_del"),
+    "get": (("k",), False, "do_get"),
+    "get_many": (("k",), False, "do_get_many"),
+    "set": (("k", "f", "v"), True, "do_set"),
+}
+OPERATION_TYPES = list(OPERATION_SPECS)
+
 
 class JackDB:
     """An embedded key-value database backed by a JSON Lines append-only log.
@@ -72,47 +82,42 @@ class JackDB:
     def do_operation(self, operation):
         """Execute one database operation given as a dict or a JSON string.
 
-        ``put`` and ``del`` mutate the database and append to the pending
-        record list; ``get`` is read-only and writes nothing to the log.
+        Mutating operations (``put``, ``del``, ``set``) append to the pending
+        record list; read operations (``get``, ``get_many``) write nothing to
+        the log. Operation shape is driven by ``OPERATION_SPECS``.
 
         :param operation: A dict (or JSON string) with an ``op`` key —
-            ``put`` (``k``, ``v``), ``del`` (``k``) or ``get`` (``k``).
-        :return: The result of the underlying do_put/do_del/do_get call.
-        :raises ValueError: If the operation is not valid JSON or has an
-            unknown ``op``.
+            ``put`` (``k``, ``v``), ``del`` (``k``), ``get`` (``k``),
+            ``get_many`` (``k``) or ``set`` (``k``, ``f``, ``v``).
+        :return: The result of the underlying do_* handler call.
+        :raises JdbException: If the operation is not valid JSON, has an
+            unknown ``op`` or is missing required fields.
         """
-        if not isinstance(operation, dict):
-            record = json.loads(operation)
-        else:
-            record = operation
+        try:
+            record = json.loads(operation) if not isinstance(operation, dict) else operation
+        except JSONDecodeError as e:
+            raise JdbException("Operation is not valid JSON.", 5) from e
 
-        if record["op"] == "put":
+        try:
+            op_code = record["op"]
+        except KeyError as e:
+            raise JdbException("Can not parse operation key.", 4) from e
+
+        spec = OPERATION_SPECS.get(op_code)
+        if spec is None:
+            raise JdbException("Unsupported operation type.", 3)
+
+        fields, journaled, handler_name = spec
+        args = []
+        for field_name in fields:
+            try:
+                args.append(record[field_name])
+            except KeyError as e:
+                raise JdbException("Can not parse key value", 4) from e
+
+        if journaled:
             self.records.append(record)
-            key = record["k"]
-            value = record["v"]
-            return self.do_put(key, value)
-
-        if record["op"] == "del":
-            self.records.append(record)
-            key = record["k"]
-            return self.do_del(key)
-
-        if record["op"] == "get":
-            key = record["k"]
-            return self.do_get(key)
-
-        if record["op"] == "get_many":
-            keys = record["k"]
-            return self.do_get_many(keys)
-
-        if record["op"] == "set":
-            self.records.append(record)
-            key = record["k"]
-            field = record["f"]
-            value = record["v"]
-            return self.do_set(key, field, value)
-
-        raise ValueError
+        return getattr(self, handler_name)(*args)
 
     def commit(self):
         """Append all pending records to the log file and flush it to disk.
