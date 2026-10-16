@@ -2,6 +2,8 @@
 import json
 import tempfile
 import os
+import fcntl
+from contextlib import contextmanager
 from io import TextIOWrapper
 from json import JSONDecodeError
 from jackdb.exceptions import JdbException
@@ -17,6 +19,31 @@ OPERATION_SPECS = {
 OPERATION_TYPES = list(OPERATION_SPECS)
 
 
+def _resolve(record):
+    """Validate one operation record's shape against ``OPERATION_SPECS``.
+
+    :return: Tuple of (journaled, handler name, extracted arguments).
+    :raises JdbException: On unknown ``op`` or missing required fields.
+    """
+    try:
+        op_code = record["op"]
+    except (KeyError, TypeError) as e:
+        raise JdbException("Can not parse operation key.", 4) from e
+
+    spec = OPERATION_SPECS.get(op_code)
+    if spec is None:
+        raise JdbException("Unsupported operation type.", 3)
+
+    fields, journaled, handler_name = spec
+    args = []
+    for field_name in fields:
+        try:
+            args.append(record[field_name])
+        except KeyError as e:
+            raise JdbException("Can not parse key value", 4) from e
+    return journaled, handler_name, args
+
+
 class JackDB:
     """An embedded key-value database backed by a JSON Lines append-only log.
 
@@ -25,6 +52,9 @@ class JackDB:
     order (later records win) to rebuild the in-memory dictionary; a torn final
     line from a crash mid-write is discarded, so the database always opens to a
     consistent prefix of the log.
+
+    Writers on the same log file are serialized across processes by an
+    exclusive ``flock`` on a sidecar lock file (``replay_path + ".lock"``).
     """
 
     def __init__(self, replay_path: str = ""):
@@ -44,40 +74,99 @@ class JackDB:
 
         self.load_from_file()
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.commit()
+        return False
+
+    @contextmanager
+    def _log_lock(self):
+        """Exclusive lock on a sidecar lock file, serializing ``commit`` and
+        ``compact`` across processes.
+
+        The lock lives on ``replay_path + ".lock"`` — a path that is never
+        replaced — because ``compact`` swaps the log's inode via ``os.replace``,
+        so a lock held on the log file itself would not exclude writers that
+        open the new inode.
+        """
+        with open(self.replay_path + ".lock", "a+", encoding='utf-8') as lock_file:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
     def load_from_file(self, ) -> bool:
         """Replay the log file from the start into ``data_dict``.
 
-        Stops at the first line that is not valid JSON (a torn final line),
-        discarding it and everything after. Afterward ``log_length`` marks how
-        many records were already persisted, so only new records get flushed.
+        A torn final line (and anything after it) is discarded and truncated
+        away so the next append cannot merge onto it. Afterward ``log_length``
+        marks how many records were already persisted, so only new records get
+        flushed.
 
         :return: The success of loading the replay file.
+
+        Holds the log lock while reading and truncating: a concurrent commit's
+        partially written line must not be mistaken for a torn tail and cut
+        away (the writer already counted it as persisted).
         """
-        with open(self.replay_path, "a+", encoding="utf-8") as replay_file:
-            replay_file.seek(0)  # "a+" opens at EOF; replay must read from the start
-            with open(self.replay_path, "rb") as byte_file:
-                raw = byte_file.read()
-
-            offset = 0  # byte offset just past the last complete, valid record
-            for line in raw.split(b'\n'):
-                if line == b'':
-                    break
-                try:
-                    self.do_operation(json.loads(line))
-                    offset += len(line) + 1  # +1 for the '\n'
-                except JSONDecodeError:
-                    break
-
-            torn = offset < len(raw)
-            if torn:
-                # Truncate the fragment (and anything after it) so the file ends
-                # cleanly after the last valid record; otherwise the next append
-                # would merge onto the torn line and be lost on reopen.
-                with open(self.replay_path, "r+b") as byte_file:
-                    byte_file.truncate(offset)
-
-            self.log_length = len(self.records)  # these records are already persisted
+        with self._log_lock():
+            with open(self.replay_path, "a+", encoding="utf-8") as f:
+                f.close()
+            self.records = []  # rebuilt below: ``records`` mirrors the file
+            self.log_length, torn = self._replay_log(journal=True)
             return not torn
+
+    def _replay_log(self, journal: bool = False) -> tuple:
+        """Apply every complete, valid record in the log file to ``data_dict``.
+
+        Stops at the first line that is not valid JSON (a torn final line);
+        the fragment and everything after it is truncated away so the file ends
+        cleanly after the last valid record.
+
+        :param journal: When True (initial load), also append each record to
+            ``records`` so the in-memory bookkeeping mirrors the file — this is
+            what keeps ``log_length`` aligned and stops ``commit`` from
+            re-writing or skipping already-persisted records. Compaction
+            replays with journal=False and tracks its own pending slice.
+        :return: Tuple of (number of records applied, whether a torn tail was
+            found and truncated).
+        """
+        with open(self.replay_path, "rb") as byte_file:
+            raw = byte_file.read()
+
+        offset = 0  # byte offset just past the last complete, valid record
+        count = 0
+        for line in raw.split(b'\n'):
+            if line == b'':
+                break
+            try:
+                record = json.loads(line)
+            except JSONDecodeError:
+                break
+            self._apply(record)
+            if journal:
+                self.records.append(record)
+            offset += len(line) + 1  # +1 for the '\n'
+            count += 1
+
+        torn = offset < len(raw)
+        if torn:
+            with open(self.replay_path, "r+b") as byte_file:
+                byte_file.truncate(offset)
+        return count, torn
+
+    def _apply(self, record):
+        """Validate and execute one operation record without journaling it.
+
+        Used for log replay, where the record is already persisted.
+
+        :return: The result of the underlying do_* handler call.
+        """
+        _, handler_name, args = _resolve(record)
+        return getattr(self, handler_name)(*args)
 
     def do_operation(self, operation):
         """Execute one database operation given as a dict or a JSON string.
@@ -98,23 +187,7 @@ class JackDB:
         except JSONDecodeError as e:
             raise JdbException("Operation is not valid JSON.", 5) from e
 
-        try:
-            op_code = record["op"]
-        except KeyError as e:
-            raise JdbException("Can not parse operation key.", 4) from e
-
-        spec = OPERATION_SPECS.get(op_code)
-        if spec is None:
-            raise JdbException("Unsupported operation type.", 3)
-
-        fields, journaled, handler_name = spec
-        args = []
-        for field_name in fields:
-            try:
-                args.append(record[field_name])
-            except KeyError as e:
-                raise JdbException("Can not parse key value", 4) from e
-
+        journaled, handler_name, args = _resolve(record)
         if journaled:
             self.records.append(record)
         return getattr(self, handler_name)(*args)
@@ -126,7 +199,7 @@ class JackDB:
         crash or reopen once it has been flushed. Already-persisted records
         (up to ``log_length``) are never written twice.
         """
-        with open(self.replay_path, "a+", encoding="utf-8") as replay_file:
+        with self._log_lock(), open(self.replay_path, "a+", encoding="utf-8") as replay_file:
             while self.log_length < len(self.records):
                 string_record = json.dumps(self.records[self.log_length])
                 replay_file.write(string_record + '\n')
@@ -201,32 +274,44 @@ class JackDB:
 
         Also commits: ``data_dict`` already includes unflushed mutations.
 
+        Holds the log lock for the whole rewrite and first replays everything
+        already committed to the file — including records written by other
+        processes since this instance opened — so the swap cannot drop records
+        it never saw.
+
         :raises OSError: If the log directory is unwritable, the disk is full,
             or the atomic swap fails. The old log is left untouched.
         :raises TypeError: If a stored value is not JSON-serializable.
         """
         temp_name = ""
         new_records = []
-        try:
-            with tempfile.NamedTemporaryFile(
-                    mode="w", dir=os.path.dirname(self.replay_path) or ".",
-                    prefix="jackdb-compact-", suffix=".json", delete=False
-            ) as temp_file:
-                temp_name = temp_file.name
-                try:
+        with self._log_lock():
+            # Rebuild in-memory state from the file as it exists right now,
+            # then re-apply this instance's still-pending mutations on top
+            # (this instance commits last, so its pending records win).
+            pending = self.records[self.log_length:]
+            self.data_dict = {}
+            self._replay_log()
+            for record in pending:
+                self._apply(record)
+
+            try:
+                with tempfile.NamedTemporaryFile(
+                        mode="w", dir=os.path.dirname(self.replay_path) or ".",
+                        prefix="jackdb-compact-", suffix=".json", delete=False
+                ) as temp_file:
+                    temp_name = temp_file.name
                     for key, value in self.data_dict.items():
                         temp_record = {"op": "put", "k": key, "v": value}
                         new_records.append(temp_record)
                         temp_file.write(json.dumps(temp_record) + '\n')
                     temp_file.flush()
                     os.fsync(temp_file.fileno())
-                finally:
-                    temp_file.close()
-                os.replace(temp_name, self.replay_path)
-        except Exception:
-            if temp_name and os.path.exists(temp_name):
-                os.remove(temp_name)
-            raise
+                    os.replace(temp_name, self.replay_path)
+            except Exception:
+                if temp_name and os.path.exists(temp_name):
+                    os.remove(temp_name)
+                raise
 
-        self.records = new_records
-        self.log_length = len(new_records)
+            self.records = new_records
+            self.log_length = len(new_records)

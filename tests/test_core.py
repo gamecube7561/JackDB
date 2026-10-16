@@ -2,8 +2,8 @@
 import tempfile
 import json
 import shutil
+from pathlib import Path
 import test_items
-
 from jackdb import JackDB
 from jackdb.exceptions import JdbException
 
@@ -14,6 +14,15 @@ def init_test():
     :return:
     """
     shutil.copy('./tests/test_file1.txt', './tests/test.txt')
+
+
+def teardown_test():
+    """
+    Test Cleanup.
+    :return:
+    """
+    Path('./tests/test.txt.lock').unlink(missing_ok=True)
+    Path('./tests/test.txt').unlink(missing_ok=True)
 
 
 def test1():
@@ -142,6 +151,25 @@ def test7():
     return False
 
 
+def test8():
+    """
+    Test 8: Allow to open JackDB using with-as.
+    :return:
+    """
+    init_test()
+    try:
+        with JackDB('./tests/test.txt') as jdb:
+            jdb.do_operation(json.dumps(test_items.TEST_PUT_DATA2))
+            jdb.do_operation(json.dumps(test_items.TEST_PUT_DATA3))
+
+            jdb.commit()
+            jdb.compact()
+
+            return True
+    except JdbException:
+        return False
+
+
 def run_tests():
     """Runs the tests."""
     passed = 0
@@ -153,7 +181,8 @@ def run_tests():
                  'test4': test4(),
                  'test5': test5(),
                  'test6': test6(),
-                 'test7': test7()
+                 'test7': test7(),
+                 'test8': test8()
                  }
 
     failed_tests = []
@@ -165,6 +194,7 @@ def run_tests():
         else:
             failed += 1
             failed_tests.append(function_name)
+        teardown_test()
 
     print("Passed: ", passed, "\nFailed: ", failed)
     if len(failed_tests) == 0:
