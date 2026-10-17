@@ -57,10 +57,12 @@ class JackDB:
     exclusive ``flock`` on a sidecar lock file (``replay_path + ".lock"``).
     """
 
-    def __init__(self, replay_path: str = ""):
+    def __init__(self, replay_path: str = "", auto_commit: bool = True, commit_size:int = 10):
         """Open (or create) the log file and replay it into memory.
 
         :param replay_path: Path to the JSON Lines log file. Required.
+        :param auto_commit: Whether autocommit is enabled or not.
+        :param commit_size: Size of uncommitted logs before auto committing.
         :raises ValueError: If ``replay_path`` is empty.
         """
         self.replay_file: TextIOWrapper
@@ -68,6 +70,8 @@ class JackDB:
         self.replay_path = replay_path
         self.records = []
         self.log_length = 0
+        self.auto_commit = auto_commit
+        self.commit_size = commit_size
 
         if self.replay_path == "":
             raise ValueError("replay_path is required")
@@ -188,9 +192,12 @@ class JackDB:
             raise JdbException("Operation is not valid JSON.", 5) from e
 
         journaled, handler_name, args = _resolve(record)
+        result = getattr(self, handler_name)(*args)
         if journaled:
             self.records.append(record)
-        return getattr(self, handler_name)(*args)
+        if self.auto_commit and self.log_length < (len(self.records) - self.commit_size):
+            self.commit()
+        return result
 
     def commit(self):
         """Append all pending records to the log file and flush it to disk.

@@ -30,7 +30,7 @@ Every mutation is appended to a log file as one JSON record per line:
 ```python
 from jackdb.main import JackDB
 
-db = JackDB("./mydb.log")  # opens (or creates) the log and replays it
+db = JackDB(replay_path="./mydb.log", auto_commit=True, commit_size=10)  # opens (or creates) the log and replays it
 
 db.do_operation('{"op":"put","k":"user:1","v":{"name":"Aoba","score":10}}')
 db.do_operation('{"op":"get","k":"user:1"}')  # returns the value (None if missing)
