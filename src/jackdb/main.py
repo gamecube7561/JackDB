@@ -57,7 +57,7 @@ class JackDB:
     exclusive ``flock`` on a sidecar lock file (``replay_path + ".lock"``).
     """
 
-    def __init__(self, replay_path: str = "", auto_commit: bool = True, commit_size:int = 10):
+    def __init__(self, replay_path: str = "", auto_commit: bool = True, commit_size: int = 10):
         """Open (or create) the log file and replay it into memory.
 
         :param replay_path: Path to the JSON Lines log file. Required.
@@ -85,6 +85,15 @@ class JackDB:
         self.commit()
         return False
 
+    def __len__(self):
+        return len(self.data_dict)
+
+    def __contains__(self, item):
+        return item in self.data_dict
+
+    def __iter__(self):
+        return iter(self.data_dict)
+
     @contextmanager
     def _log_lock(self):
         """Exclusive lock on a sidecar lock file, serializing ``commit`` and
@@ -110,11 +119,11 @@ class JackDB:
         marks how many records were already persisted, so only new records get
         flushed.
 
-        :return: The success of loading the replay file.
-
         Holds the log lock while reading and truncating: a concurrent commit's
         partially written line must not be mistaken for a torn tail and cut
         away (the writer already counted it as persisted).
+
+        :return: The success of loading the replay file.
         """
         with self._log_lock():
             with open(self.replay_path, "a+", encoding="utf-8") as f:
@@ -302,6 +311,7 @@ class JackDB:
             for record in pending:
                 self._apply(record)
 
+            dir_fd = os.open(os.path.dirname(self.replay_path) or '.', os.O_RDONLY)
             try:
                 with tempfile.NamedTemporaryFile(
                         mode="w", dir=os.path.dirname(self.replay_path) or ".",
@@ -315,10 +325,13 @@ class JackDB:
                     temp_file.flush()
                     os.fsync(temp_file.fileno())
                     os.replace(temp_name, self.replay_path)
+                    os.fsync(dir_fd)
             except Exception:
                 if temp_name and os.path.exists(temp_name):
                     os.remove(temp_name)
                 raise
+            finally:
+                os.close(dir_fd)
 
             self.records = new_records
             self.log_length = len(new_records)
