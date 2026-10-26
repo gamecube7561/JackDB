@@ -248,7 +248,7 @@ class JackDB:
         """Retrieve values in bulk.
 
         :param keys: Array of database keys.
-        :return: Tuple containing key and value.
+        :return: A list of tuples containing key and value.
         """
         results = []
         for key in keys:
