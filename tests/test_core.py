@@ -170,6 +170,42 @@ def test8():
         return False
 
 
+def test9():
+    """
+    Test 9: Test the dunders.
+    :return:
+    """
+    init_test()
+    try:
+        jdb = JackDB('./tests/test.txt')
+        j_len = len(jdb)
+
+        return j_len == 2 and 'cfg' in jdb
+    except JdbException:
+        return False
+
+
+def test10():
+    """
+    Test 10: Iteration dunder reflects the replayed log.
+    :return:
+    """
+    init_test()
+    jdb = JackDB('./tests/test.txt')
+    jdb.do_operation(json.dumps(test_items.TEST_PUT_DATA3))
+    jdb.commit()
+
+    reopened = JackDB('./tests/test.txt')
+    keys = list(reopened)  # exercises __iter__
+
+    if sorted(keys) != sorted(test_items.TEST_PUT_OUTPUT2.keys()):
+        print(f"Test 10 \nexpected keys: {sorted(test_items.TEST_PUT_OUTPUT2.keys())}"
+              f"\ngot: {sorted(keys)}")
+        return False
+
+    return dict(reopened) == dict(test_items.TEST_PUT_OUTPUT2)
+
+
 def run_tests():
     """Runs the tests."""
     passed = 0
@@ -182,7 +218,9 @@ def run_tests():
                  'test5': test5(),
                  'test6': test6(),
                  'test7': test7(),
-                 'test8': test8()
+                 'test8': test8(),
+                 'test9': test9(),
+                 'test10': test10()
                  }
 
     failed_tests = []
