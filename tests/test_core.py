@@ -199,7 +199,8 @@ def test10():
     keys = list(reopened)  # exercises __iter__
 
     if sorted(keys) != sorted(test_items.TEST_PUT_OUTPUT2.keys()):
-        print(f"Test 10 \nexpected keys: {sorted(test_items.TEST_PUT_OUTPUT2.keys())}\ngot: {sorted(keys)}")
+        print(f"Test 10 \nexpected keys: {sorted(test_items.TEST_PUT_OUTPUT2.keys())}"
+              f"\ngot: {sorted(keys)}")
         return False
 
     return dict(reopened) == dict(test_items.TEST_PUT_OUTPUT2)

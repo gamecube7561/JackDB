@@ -98,6 +98,10 @@ class JackDB:
         return self.data_dict[key]
 
     def keys(self):
+        """
+        Return a set of the keys from the data dict.
+        :return:
+        """
         return self.data_dict.keys()
 
     @contextmanager
