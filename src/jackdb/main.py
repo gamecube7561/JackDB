@@ -94,6 +94,12 @@ class JackDB:
     def __iter__(self):
         return iter(self.data_dict)
 
+    def __getitem__(self, key):
+        return self.data_dict[key]
+
+    def keys(self):
+        return self.data_dict.keys()
+
     @contextmanager
     def _log_lock(self):
         """Exclusive lock on a sidecar lock file, serializing ``commit`` and
