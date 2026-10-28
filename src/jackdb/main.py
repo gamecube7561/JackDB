@@ -3,6 +3,7 @@ import json
 import tempfile
 import os
 import fcntl
+import threading
 from contextlib import contextmanager
 from io import TextIOWrapper
 from json import JSONDecodeError
@@ -57,6 +58,7 @@ class JackDB:
     exclusive ``flock`` on a sidecar lock file (``replay_path + ".lock"``).
     """
 
+
     def __init__(self, replay_path: str = "", auto_commit: bool = True, commit_size: int = 10):
         """Open (or create) the log file and replay it into memory.
 
@@ -72,6 +74,8 @@ class JackDB:
         self.log_length = 0
         self.auto_commit = auto_commit
         self.commit_size = commit_size
+
+        self._lock = threading.RLock()
 
         if self.replay_path == "":
             raise ValueError("replay_path is required")
@@ -205,18 +209,19 @@ class JackDB:
         :raises JdbException: If the operation is not valid JSON, has an
             unknown ``op`` or is missing required fields.
         """
-        try:
-            record = json.loads(operation) if not isinstance(operation, dict) else operation
-        except JSONDecodeError as e:
-            raise JdbException("Operation is not valid JSON.", 5) from e
+        with self._lock:
+            try:
+                record = json.loads(operation) if not isinstance(operation, dict) else operation
+            except JSONDecodeError as e:
+                raise JdbException("Operation is not valid JSON.", 5) from e
 
-        journaled, handler_name, args = _resolve(record)
-        result = getattr(self, handler_name)(*args)
-        if journaled:
-            self.records.append(record)
-        if self.auto_commit and self.log_length < (len(self.records) - self.commit_size):
-            self.commit()
-        return result
+            journaled, handler_name, args = _resolve(record)
+            result = getattr(self, handler_name)(*args)
+            if journaled:
+                self.records.append(record)
+            if self.auto_commit and self.log_length < (len(self.records) - self.commit_size):
+                self.commit()
+            return result
 
     def commit(self):
         """Append all pending records to the log file and flush it to disk.
@@ -225,13 +230,14 @@ class JackDB:
         crash or reopen once it has been flushed. Already-persisted records
         (up to ``log_length``) are never written twice.
         """
-        with self._log_lock(), open(self.replay_path, "a+", encoding="utf-8") as replay_file:
-            while self.log_length < len(self.records):
-                string_record = json.dumps(self.records[self.log_length])
-                replay_file.write(string_record + '\n')
-                self.log_length += 1
-            replay_file.flush()
-            os.fsync(replay_file.fileno())
+        with self._lock:
+            with self._log_lock(), open(self.replay_path, "a+", encoding="utf-8") as replay_file:
+                while self.log_length < len(self.records):
+                    string_record = json.dumps(self.records[self.log_length])
+                    replay_file.write(string_record + '\n')
+                    self.log_length += 1
+                replay_file.flush()
+                os.fsync(replay_file.fileno())
 
     def do_put(self, key, value):
         """Store ``value`` under ``key``, overwriting any existing value.
@@ -309,39 +315,38 @@ class JackDB:
             or the atomic swap fails. The old log is left untouched.
         :raises TypeError: If a stored value is not JSON-serializable.
         """
-        temp_name = ""
-        new_records = []
-        with self._log_lock():
-            # Rebuild in-memory state from the file as it exists right now,
-            # then re-apply this instance's still-pending mutations on top
-            # (this instance commits last, so its pending records win).
-            pending = self.records[self.log_length:]
-            self.data_dict = {}
-            self._replay_log()
-            for record in pending:
-                self._apply(record)
+        with self._lock:
+            temp_name = ""
+            new_records = []
+            with self._log_lock():
+                # Rebuild in-memory state from the file as it exists right now,
+                # then re-apply this instance's still-pending mutations on top
+                # (this instance commits last, so its pending records win).
+                pending = self.records[self.log_length:]
+                self.data_dict = {}
+                self._replay_log()
+                for record in pending:
+                    self._apply(record)
 
-            dir_fd = os.open(os.path.dirname(self.replay_path) or '.', os.O_RDONLY)
-            try:
-                with tempfile.NamedTemporaryFile(
-                        mode="w", dir=os.path.dirname(self.replay_path) or ".",
-                        prefix="jackdb-compact-", suffix=".json", delete=False
-                ) as temp_file:
-                    temp_name = temp_file.name
-                    for key, value in self.data_dict.items():
-                        temp_record = {"op": "put", "k": key, "v": value}
-                        new_records.append(temp_record)
-                        temp_file.write(json.dumps(temp_record) + '\n')
-                    temp_file.flush()
-                    os.fsync(temp_file.fileno())
-                    os.replace(temp_name, self.replay_path)
-                    os.fsync(dir_fd)
-            except Exception:
-                if temp_name and os.path.exists(temp_name):
-                    os.remove(temp_name)
-                raise
-            finally:
-                os.close(dir_fd)
+                dir_fd = os.open(os.path.dirname(self.replay_path) or '.', os.O_RDONLY)
+                try:
+                    with tempfile.NamedTemporaryFile(
+                            mode="w", dir=os.path.dirname(self.replay_path) or ".",
+                            prefix="jackdb-compact-", suffix=".json", delete=False
+                    ) as temp_file:
+                        temp_name = temp_file.name
+                        for key, value in self.data_dict.items():
+                            temp_record = {"op": "put", "k": key, "v": value}
+                            new_records.append(temp_record)
+                            temp_file.write(json.dumps(temp_record) + '\n')
+                        temp_file.flush()
+                        os.fsync(temp_file.fileno())
+                        os.replace(temp_name, self.replay_path)
+                        os.fsync(dir_fd)
+                except Exception:
+                    if temp_name and os.path.exists(temp_name):
+                        os.remove(temp_name)
+                    raise
 
-            self.records = new_records
-            self.log_length = len(new_records)
+                self.records = new_records
+                self.log_length = len(new_records)
