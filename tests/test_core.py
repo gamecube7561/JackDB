@@ -206,6 +206,29 @@ def test10():
     return dict(reopened) == dict(test_items.TEST_PUT_OUTPUT2)
 
 
+def test11():
+    """
+    Test 11: Many puts and autocommit.
+    :return:
+    """
+    init_test()
+    try:
+        with JackDB('./tests/test.txt') as jdb:
+            for i in range(1, 100):
+                op = {
+                    'op': 'put',
+                    'k': f'user:{i + 100}',
+                    'v': {
+                        'name': 'Aoba',
+                        'score': f'{i}'
+                    }
+                }
+                jdb.do_operation(json.dumps(op))
+            return len(jdb) == 101
+    except JdbException:
+        return False
+
+
 def run_tests():
     """Runs the tests."""
     passed = 0
@@ -220,7 +243,8 @@ def run_tests():
                  'test7': test7(),
                  'test8': test8(),
                  'test9': test9(),
-                 'test10': test10()
+                 'test10': test10(),
+                 'test11': test11()
                  }
 
     failed_tests = []
