@@ -83,6 +83,17 @@ class JackDB:
 
         self.load_from_file()
 
+        if self.db_name:
+            self.serve()
+
+    def serve(self):
+        """
+        Start serving the API
+        :return:
+        """
+        from jackdb.api import serve_routes
+        serve_routes(self.db_name, self)
+
     def __enter__(self):
         return self
 

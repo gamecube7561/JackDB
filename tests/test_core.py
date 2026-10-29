@@ -229,6 +229,18 @@ def test11():
         return False
 
 
+def test12():
+    """
+    Test 12: Named DB.
+    :return:
+    """
+    init_test()
+    try:
+        JackDB('./tests/test.txt', db_name="Test")
+    except JdbException:
+        return False
+    return True
+
 def run_tests():
     """Runs the tests."""
     passed = 0
@@ -244,7 +256,8 @@ def run_tests():
                  'test8': test8(),
                  'test9': test9(),
                  'test10': test10(),
-                 'test11': test11()
+                 'test11': test11(),
+                 'test12': test12()
                  }
 
     failed_tests = []
