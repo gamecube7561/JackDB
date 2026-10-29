@@ -58,8 +58,8 @@ class JackDB:
     exclusive ``flock`` on a sidecar lock file (``replay_path + ".lock"``).
     """
 
-
-    def __init__(self, replay_path: str = "", auto_commit: bool = True, commit_size: int = 10):
+    def __init__(self, replay_path: str = "", auto_commit: bool = True,
+                 commit_size: int = 10, db_name: str = ""):
         """Open (or create) the log file and replay it into memory.
 
         :param replay_path: Path to the JSON Lines log file. Required.
@@ -74,6 +74,7 @@ class JackDB:
         self.log_length = 0
         self.auto_commit = auto_commit
         self.commit_size = commit_size
+        self.db_name = db_name
 
         self._lock = threading.RLock()
 
@@ -347,6 +348,8 @@ class JackDB:
                     if temp_name and os.path.exists(temp_name):
                         os.remove(temp_name)
                     raise
+                finally:
+                    os.close(dir_fd)
 
                 self.records = new_records
                 self.log_length = len(new_records)
