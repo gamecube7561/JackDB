@@ -4,8 +4,10 @@ import json
 import shutil
 from pathlib import Path
 import test_items
+from fastapi.testclient import TestClient
 from jackdb import JackDB
 from jackdb.exceptions import JdbException
+from jackdb.api import serve_routes
 
 
 def init_test():
@@ -241,6 +243,30 @@ def test12():
         return False
     return True
 
+def test13():
+    """
+    Test 13: The API reports the record count at /{db_name}/size.
+    :return:
+    """
+    init_test()
+    try:
+
+
+        jdb = JackDB('./tests/test.txt')
+        app = serve_routes('Test', jdb)
+
+        client = TestClient(app)
+        response = client.get('/Test/size')
+
+        if response.status_code != 200 or response.json() != len(jdb):
+            print(f"Test 13 \nexpected: 200 {len(jdb)}\n"
+                  f"got: {response.status_code} {response.text}")
+            return False
+        return True
+    except JdbException:
+        return False
+
+
 def run_tests():
     """Runs the tests."""
     passed = 0
@@ -257,7 +283,8 @@ def run_tests():
                  'test9': test9(),
                  'test10': test10(),
                  'test11': test11(),
-                 'test12': test12()
+                 'test12': test12(),
+                 'test13': test13()
                  }
 
     failed_tests = []

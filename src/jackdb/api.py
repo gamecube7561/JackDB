@@ -1,7 +1,6 @@
 """Module that builds the API for JackDB"""
-
 from fastapi import FastAPI
-from jackdb import JackDB
+from jackdb.core import JackDB
 
 
 def serve_routes(db_name: str, db: JackDB) -> FastAPI:
