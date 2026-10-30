@@ -4,8 +4,10 @@ import json
 import shutil
 from pathlib import Path
 import test_items
+from fastapi.testclient import TestClient
 from jackdb import JackDB
 from jackdb.exceptions import JdbException
+from jackdb.api import serve_routes
 
 
 def init_test():
@@ -206,6 +208,65 @@ def test10():
     return dict(reopened) == dict(test_items.TEST_PUT_OUTPUT2)
 
 
+def test11():
+    """
+    Test 11: Many puts and autocommit.
+    :return:
+    """
+    init_test()
+    try:
+        with JackDB('./tests/test.txt') as jdb:
+            for i in range(1, 100):
+                op = {
+                    'op': 'put',
+                    'k': f'user:{i + 100}',
+                    'v': {
+                        'name': 'Aoba',
+                        'score': f'{i}'
+                    }
+                }
+                jdb.do_operation(json.dumps(op))
+            return len(jdb) == 101
+    except JdbException:
+        return False
+
+
+def test12():
+    """
+    Test 12: Named DB.
+    :return:
+    """
+    init_test()
+    try:
+        JackDB('./tests/test.txt', db_name="Test")
+    except JdbException:
+        return False
+    return True
+
+def test13():
+    """
+    Test 13: The API reports the record count at /{db_name}/size.
+    :return:
+    """
+    init_test()
+    try:
+
+
+        jdb = JackDB('./tests/test.txt')
+        app = serve_routes('Test', jdb)
+
+        client = TestClient(app)
+        response = client.get('/Test/size')
+
+        if response.status_code != 200 or response.json() != len(jdb):
+            print(f"Test 13 \nexpected: 200 {len(jdb)}\n"
+                  f"got: {response.status_code} {response.text}")
+            return False
+        return True
+    except JdbException:
+        return False
+
+
 def run_tests():
     """Runs the tests."""
     passed = 0
@@ -220,7 +281,10 @@ def run_tests():
                  'test7': test7(),
                  'test8': test8(),
                  'test9': test9(),
-                 'test10': test10()
+                 'test10': test10(),
+                 'test11': test11(),
+                 'test12': test12(),
+                 'test13': test13()
                  }
 
     failed_tests = []
