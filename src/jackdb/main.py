@@ -1,5 +1,6 @@
 """Public JackDB class with optional API setup."""
 from jackdb.core import JackDB as CoreJackDB
+from jackdb.api import serve_routes
 
 
 class JackDB(CoreJackDB):
@@ -12,11 +13,7 @@ class JackDB(CoreJackDB):
             self.serve()
 
     def serve(self):
-        """Build and attach the API app for this database.
-
-        :raises ModuleNotFoundError: If ``fastapi`` is not installed; the
-            import is deferred so storage operations do not load FastAPI.
         """
-        from jackdb.api import serve_routes  # pylint: disable=import-outside-toplevel
-
+        Build and attach the API app for this database.
+        """
         self.api = serve_routes(self.db_name, self)
