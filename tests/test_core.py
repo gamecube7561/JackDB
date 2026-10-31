@@ -17,6 +17,13 @@ def init_test():
     """
     shutil.copy('./tests/test_file1.txt', './tests/test.txt')
 
+def init_test2():
+    """
+    Initialize the test text file
+    :return:
+    """
+    shutil.copy('./tests/test_file1_no_new_line.txt', './tests/test.txt')
+
 
 def teardown_test():
     """
@@ -250,8 +257,6 @@ def test13():
     """
     init_test()
     try:
-
-
         jdb = JackDB('./tests/test.txt')
         app = serve_routes('Test', jdb)
 
@@ -264,6 +269,20 @@ def test13():
             return False
         return True
     except JdbException:
+        return False
+
+def test14():
+    """
+    Test 14: When file doesn't have new line at the end
+    :return:
+    """
+    init_test2()
+    try:
+        jdb = JackDB('./tests/test.txt')
+
+        return True
+    except Exception as e:
+        print(e)
         return False
 
 
@@ -284,7 +303,8 @@ def run_tests():
                  'test10': test10(),
                  'test11': test11(),
                  'test12': test12(),
-                 'test13': test13()
+                 'test13': test13(),
+                 'test14': test14()
                  }
 
     failed_tests = []
