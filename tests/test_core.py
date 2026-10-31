@@ -279,9 +279,17 @@ def test14():
     init_test2()
     try:
         jdb = JackDB('./tests/test.txt')
+        app = serve_routes('Test', jdb)
 
+        client = TestClient(app)
+        response = client.get('/Test/size')
+
+        if response.status_code != 200 or response.json() != len(jdb):
+            print(f"Test 13 \nexpected: 200 {len(jdb)}\n"
+                  f"got: {response.status_code} {response.text}")
+            return False
         return True
-    except Exception as e:
+    except JdbException as e:
         print(e)
         return False
 

@@ -108,7 +108,7 @@ class JackDB:
         :return: The success of loading the replay file.
         """
         with self._log_lock():
-        
+
             if not self.has_new_line():
                 self.add_new_line()
 
@@ -326,7 +326,11 @@ class JackDB:
                 self.log_length = len(new_records)
 
     def has_new_line(self):
-        with open(self.replay_path, 'a+b') as f:
+        """
+        Check whether a file has a new line at the end of it.
+        :return: Bool: If a new line is found at the end of the file.
+        """
+        with open(self.replay_path, 'a+b', encoding='utf-8') as f:
             try:
                 # Move the file pointer to 1 byte before the end of the file
                 f.seek(-1, 2)
@@ -337,5 +341,9 @@ class JackDB:
                 return False
 
     def add_new_line(self):
-        with open(self.replay_path, "a+") as f:
+        """
+        Add a new line to the end of a file.
+        :return:
+        """
+        with open(self.replay_path, "a+", encoding='utf-8') as f:
             f.write("\n")

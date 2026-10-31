@@ -16,5 +16,4 @@ class JackDB(CoreJackDB):
         """
         Build and attach the API app for this database.
         """
-
         self.api = serve_routes(self.db_name, self)
