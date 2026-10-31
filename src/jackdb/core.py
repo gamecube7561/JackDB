@@ -330,7 +330,7 @@ class JackDB:
         Check whether a file has a new line at the end of it.
         :return: Bool: If a new line is found at the end of the file.
         """
-        with open(self.replay_path, 'a+b', encoding='utf-8') as f:
+        with open(self.replay_path, 'a+', encoding='utf-8') as f:
             try:
                 # Move the file pointer to 1 byte before the end of the file
                 f.seek(-1, 2)
