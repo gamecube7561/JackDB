@@ -68,6 +68,6 @@ TEST_PUT_OUTPUT3 = {
     },
     'cfg': [1, 2, 3]}
 
-TEST_BAD_OPERATION ={
+TEST_BAD_OPERATION = {
     'op': 'evil_operation'
 }

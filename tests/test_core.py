@@ -17,6 +17,7 @@ def init_test():
     """
     shutil.copy('./tests/test_file1.txt', './tests/test.txt')
 
+
 def init_test2():
     """
     Initialize the test text file
@@ -250,6 +251,7 @@ def test12():
         return False
     return True
 
+
 def test13():
     """
     Test 13: The API reports the record count at /{db_name}/size.
@@ -270,6 +272,7 @@ def test13():
         return True
     except JdbException:
         return False
+
 
 def test14():
     """
@@ -292,6 +295,7 @@ def test14():
     except JdbException as e:
         print(e)
         return False
+
 
 def test15():
     """

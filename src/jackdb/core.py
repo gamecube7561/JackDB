@@ -108,7 +108,6 @@ class JackDB:
         :return: The success of loading the replay file.
         """
         with self._log_lock():
-
             if not self.has_new_line():
                 self.add_new_line()
 
