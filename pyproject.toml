@@ -1,9 +1,10 @@
 [project]
 name = "JackDB"
-version = "0.1.0"
+version = "0.2.1"
 requires-python = ">=3.10"
 dependencies = [
     "fastapi[standard]>=0.162.0",
+    "pydantic>=2.14.2",
 ]
 
 [build-system]
