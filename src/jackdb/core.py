@@ -25,7 +25,7 @@ class JackDB:
     """
 
     def __init__(self, replay_path: str = "", auto_commit: bool = True,
-                 commit_size: int = 10, db_name: str = ""):
+                 commit_size: int = 10, db_name: None | str = None):
         """Open (or create) the log file and replay it into memory.
 
         :param replay_path: Path to the JSON Lines log file. Required.
