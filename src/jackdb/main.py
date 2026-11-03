@@ -1,6 +1,7 @@
 """Public JackDB class with optional API setup."""
 from jackdb.core import JackDB as CoreJackDB
 from jackdb.api import serve_routes
+from jackdb.exceptions import JdbException
 
 
 class JackDB(CoreJackDB):
@@ -16,4 +17,6 @@ class JackDB(CoreJackDB):
         """
         Build and attach the API app for this database.
         """
+        if self.db_name is None:
+            raise JdbException("Database name must be set before serving API", 6)
         self.api = serve_routes(self.db_name, self)
