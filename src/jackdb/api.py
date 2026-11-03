@@ -1,6 +1,9 @@
 """Module that builds the API for JackDB"""
 from fastapi import FastAPI
+from fastapi.encoders import jsonable_encoder
+
 from jackdb.core import JackDB
+from jackdb.api_models import PutModel
 
 
 def serve_routes(db_name: str, db: JackDB) -> FastAPI:
@@ -20,6 +23,22 @@ def serve_routes(db_name: str, db: JackDB) -> FastAPI:
 
     @app.get(path_prefix + "/get/{db_key}")
     def get_item(db_key: str):
-        return db[db_key]
+        op = {
+            'op': 'get',
+            'k': db_key
+        }
+        return db.do_operation(op)
+
+    @app.put(path_prefix + "/put/{db_key}")
+    def put_item(db_key: str, db_value: PutModel):
+        encoded_item = jsonable_encoder(db_value)
+        op = {
+            'op': 'put',
+            'k': db_key,
+            'v': encoded_item['value']
+        }
+        result = db.do_operation(op)
+        db.commit()
+        return result
 
     return app

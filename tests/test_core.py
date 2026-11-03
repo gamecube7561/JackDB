@@ -309,9 +309,61 @@ def test15():
     client = TestClient(app)
     response = client.get('/Test/get/user:1')
 
-    if response.status_code != 200 or response.text != """{"name":"Aoba","score":10}""":
-        print("Response code not 200 or result not correct")
+    if response.status_code != 200:
+        print("Response code not 200")
         return False
+    if response.text != """{"name":"Aoba","score":10}""":
+        print("Result not correct")
+        return False
+    return True
+
+
+def test16():
+    """
+    Test 16: API put test.
+    :return:
+    """
+    init_test()
+    jdb = JackDB('./tests/test.txt')
+    app = serve_routes('Test', jdb)
+
+    client = TestClient(app)
+    input_data = {"value": {"name": "Aoba", "score": 123}}
+    put_resp = client.put('Test/put/user:1', json=input_data)
+    get_resp = client.get('/Test/get/user:1')
+
+    if get_resp.status_code != 200 or put_resp.status_code != 200:
+        print("Response code not 200")
+        return False
+    if (put_resp.text != """{"name":"Aoba","score":123}"""
+            or get_resp.text != """{"name":"Aoba","score":123}"""):
+        print("Result not correct")
+        return False
+    return True
+
+
+def test17():
+    """
+    API PUT survives reopen with automatic commits enabled or disabled.
+    :return:
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        for auto_commit in (True, False):
+            replay_path = str(Path(temp_dir) / f"api-{auto_commit}.log")
+            jdb = JackDB(replay_path, auto_commit=auto_commit)
+            app = serve_routes('Test', jdb)
+            expected = {'text': 'hello', 'object': {'nested': [1, True, None]}}
+            with TestClient(app) as client:
+                for key, value in expected.items():
+                    response = client.put(f'/Test/put/{key}', json={'value': value})
+                    if response.status_code != 200 or response.json() != value:
+                        print(f"PUT failed with auto_commit={auto_commit}: {response.text}")
+                        return False
+                    # Reopen before shutdown: the response must imply persistence.
+                    reopened = JackDB(replay_path)
+                    if reopened.do_operation({'op': 'get', 'k': key}) != value:
+                        print(f"PUT did not persist with auto_commit={auto_commit}")
+                        return False
     return True
 
 
@@ -334,7 +386,9 @@ def run_tests():
                  'test12': test12(),
                  'test13': test13(),
                  'test14': test14(),
-                 'test15': test15()
+                 'test15': test15(),
+                 'test16': test16(),
+                 'test17': test17()
                  }
 
     failed_tests = []

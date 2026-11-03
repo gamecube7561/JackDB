@@ -7,7 +7,7 @@ class JackDB(CoreJackDB):
     """An embedded database that can also expose an API when named."""
 
     def __init__(self, replay_path: str = "", auto_commit: bool = True,
-                 commit_size: int = 10, db_name: str = ""):
+                 commit_size: int = 10, db_name: None | str = None):
         super().__init__(replay_path, auto_commit, commit_size, db_name)
         if self.db_name:
             self.serve()
