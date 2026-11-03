@@ -285,13 +285,30 @@ def test14():
         response = client.get('/Test/size')
 
         if response.status_code != 200 or response.json() != len(jdb):
-            print(f"Test 13 \nexpected: 200 {len(jdb)}\n"
+            print(f"Test 14 \nexpected: 200 {len(jdb)}\n"
                   f"got: {response.status_code} {response.text}")
             return False
         return True
     except JdbException as e:
         print(e)
         return False
+
+def test15():
+    """
+    Test 15: API get test.
+    :return:
+    """
+    init_test()
+    jdb = JackDB('./tests/test.txt')
+    app = serve_routes('Test', jdb)
+
+    client = TestClient(app)
+    response = client.get('/Test/get/user:1')
+
+    if response.status_code != 200 or response.text != """{"name":"Aoba","score":10}""":
+        print("Response code not 200 or result not correct")
+        return False
+    return True
 
 
 def run_tests():
@@ -312,7 +329,8 @@ def run_tests():
                  'test11': test11(),
                  'test12': test12(),
                  'test13': test13(),
-                 'test14': test14()
+                 'test14': test14(),
+                 'test15': test15()
                  }
 
     failed_tests = []

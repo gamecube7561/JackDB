@@ -12,8 +12,14 @@ def serve_routes(db_name: str, db: JackDB) -> FastAPI:
     """
     app = FastAPI()
 
-    @app.get(f"/{db_name}/size")
+    path_prefix = f"/{db_name}"
+
+    @app.get(path_prefix + "/size")
     def get_size():
         return len(db)
+
+    @app.get(path_prefix + "/get/{db_key}")
+    def get_item(db_key: str):
+        return db[db_key]
 
     return app

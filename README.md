@@ -42,6 +42,8 @@ keys; tuples in values become lists after reopening.
 ### Constructor
 
 ```python
+from jackdb import JackDB
+
 JackDB(replay_path="", auto_commit=True, commit_size=10, db_name="")
 ```
 
@@ -77,6 +79,8 @@ rather than mutating returned dictionaries or lists directly.
 ### Persistence and recovery
 
 ```python
+from jackdb import JackDB
+
 db = JackDB("./mydb.log", auto_commit=False)
 db.do_operation({"op": "put", "k": "cfg", "v": [1, 2, 3]})
 db.commit()
@@ -105,6 +109,9 @@ raise errors, and content after the stopping point is discarded.
 ### Compaction and concurrency
 
 ```python
+from jackdb import JackDB
+
+db = JackDB("./mydb.log", auto_commit=False)
 db.compact()
 ```
 
@@ -128,8 +135,10 @@ also bypass the instance lock.
 
 ```python
 from jackdb.exceptions import JdbException
+from jackdb import JackDB
 
 try:
+    db = JackDB("./mydb.log", auto_commit=False)
     db.do_operation({"op": "unknown"})
 except JdbException as error:
     print(error.message, error.error_code)
