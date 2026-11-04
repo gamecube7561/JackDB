@@ -344,7 +344,7 @@ def test16():
 
 def test17():
     """
-    API PUT survives reopen with automatic commits enabled or disabled.
+    Test 17: API PUT survives reopen with automatic commits enabled or disabled.
     :return:
     """
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -366,6 +366,28 @@ def test17():
                         return False
     return True
 
+def test18():
+    """
+    Test 18: API Set Test.
+    :return:
+    """
+    init_test()
+    jdb = JackDB('./tests/test.txt')
+    app = serve_routes('Test', jdb)
+
+    client = TestClient(app)
+    input_data = {"field": "score", "value": 123}
+    put_resp = client.put('Test/set/user:1', json=input_data)
+    get_resp = client.get('/Test/get/user:1')
+
+    if get_resp.status_code != 200 or put_resp.status_code != 200:
+        print("Response code not 200")
+        return False
+    if (put_resp.text != """{"name":"Aoba","score":123}"""
+            or get_resp.text != """{"name":"Aoba","score":123}"""):
+        print("Result not correct")
+        return False
+    return True
 
 def run_tests():
     """Runs the tests."""
@@ -388,7 +410,8 @@ def run_tests():
                  'test14': test14(),
                  'test15': test15(),
                  'test16': test16(),
-                 'test17': test17()
+                 'test17': test17(),
+                 'test18': test18()
                  }
 
     failed_tests = []

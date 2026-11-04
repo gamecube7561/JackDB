@@ -176,15 +176,19 @@ JSON integer. FastAPI's interactive documentation is available at `/docs`.
 `GET /demo/get/{key}` returns the stored JSON value, or `null` if the key is
 missing. `PUT /demo/put/{key}` accepts a body such as
 `{"value": "hello"}` or `{"value": {"name": "Aoba", "score": 10}}` and
-returns the stored value. Each successful PUT commits pending operations
+returns the stored value. `PUT /demo/set/{key}` accepts a body such as
+`{"field": "score", "value": 123}`. SET adds or updates a field on an existing
+JSON object and returns the updated object. A missing key or a value that is
+not an object returns HTTP 409. Each successful PUT commits pending operations
 before responding, regardless of `auto_commit`.
 
-The PUT `value` field is required and supports strings and JSON objects only.
-Objects can contain nested arrays, numbers, booleans, and null. Top-level
-arrays, numbers, booleans, and null are rejected with HTTP 422, as is an
-omitted `value`. This HTTP restriction is narrower than the embedded storage
-API, which supports other JSON-serializable values. Keys must fit in a single
-URL path segment; slash-containing keys are not supported.
+Both PUT endpoints require a `value` field and accept strings, integers,
+fractional numbers, JSON objects, arrays, and booleans. Objects and arrays can
+contain nested JSON values, including null. A top-level null or an omitted
+`value` returns HTTP 422. SET also requires a string `field`; a missing field
+or a non-string field returns HTTP 422. The embedded storage API additionally
+supports top-level null. Keys must fit in a single URL path segment;
+slash-containing keys are not supported.
 
 `db.serve()` builds or replaces `db.api`; it does not start a server. To attach
 an API later, set a nonempty `db.db_name` and call `db.serve()`. Applications
@@ -199,7 +203,7 @@ src/jackdb/core.py        # Storage, replay, operations, commit, compaction
 src/jackdb/api.py         # FastAPI application and routes
 src/jackdb/operations.py  # Operation specifications and validation
 src/jackdb/exceptions.py  # JdbException
-tests/test_core.py       # Custom runner with 17 database/API checks
+tests/test_core.py       # Custom runner with 18 database/API checks
 tests/test_items.py      # Test data
 ```
 

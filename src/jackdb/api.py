@@ -1,9 +1,10 @@
 """Module that builds the API for JackDB"""
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.encoders import jsonable_encoder
 
 from jackdb.core import JackDB
-from jackdb.api_models import PutModel
+from jackdb.api_models import PutModel, SetModel
+from jackdb.exceptions import JdbException
 
 
 def serve_routes(db_name: str, db: JackDB) -> FastAPI:
@@ -39,6 +40,22 @@ def serve_routes(db_name: str, db: JackDB) -> FastAPI:
         }
         result = db.do_operation(op)
         db.commit()
+        return result
+
+    @app.put(path_prefix + "/set/{db_key}")
+    def set_item(db_key: str, db_value: SetModel):
+        encoded_item = jsonable_encoder(db_value)
+        op = {
+            'op': 'set',
+            'k': db_key,
+            'f': encoded_item['field'],
+            'v': encoded_item['value']
+        }
+        try:
+            result = db.do_operation(op)
+            db.commit()
+        except JdbException as exc:
+            raise HTTPException(status_code=409, detail="Error occurred during operation.") from exc
         return result
 
     return app
