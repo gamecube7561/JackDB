@@ -201,6 +201,7 @@ src/jackdb/__init__.py    # Public JackDB export and version
 src/jackdb/main.py        # Public JackDB subclass and API attachment
 src/jackdb/core.py        # Storage, replay, operations, commit, compaction
 src/jackdb/api.py         # FastAPI application and routes
+src/jackdb/api_models.py  # Models for FastAPI 
 src/jackdb/operations.py  # Operation specifications and validation
 src/jackdb/exceptions.py  # JdbException
 tests/test_core.py       # Custom runner with 18 database/API checks
