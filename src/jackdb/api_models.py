@@ -5,7 +5,7 @@ class PutModel(BaseModel):
     """
     PUT body with a required string or JSON object value.
 
-    Objects may contain any nested JSON values. Top-level arrays, numbers,
-    booleans, and null are not supported by this HTTP endpoint.
+    Objects may contain any nested JSON values, lists, numbers and booleans.
+    Nulls are not supported by this HTTP endpoint.
     """
-    value: str | dict
+    value: str | int | dict | list | bool
