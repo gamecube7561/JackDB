@@ -403,13 +403,14 @@ def test19():
     client = TestClient(app)
     input_data = {"field": "score", "value": 123}
     put_resp = client.delete('Test/del/user:1', params=input_data)
-    print(put_resp.text)
+
     get_resp = client.get('/Test/get/user:1')
 
     if get_resp.status_code != 200 or put_resp.status_code != 200:
         print("Response code not 200")
         return False
-    if put_resp.text == {"message":"Item successfully deleted.","id":"user:1"} or get_resp.text != "null":
+    if (put_resp.text == {"message": "Item successfully deleted.", "id": "user:1"}
+            or get_resp.text != "null"):
         print("Result not correct")
         return False
     return True

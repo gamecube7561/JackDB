@@ -65,7 +65,7 @@ def serve_routes(db_name: str, db: JackDB) -> FastAPI:
             'k': db_key
         }
         try:
-            result = db.do_operation(op)
+            db.do_operation(op)
             db.commit()
         except JdbException as exc:
             raise HTTPException(status_code=409, detail="Error occurred during operation.") from exc

@@ -188,6 +188,7 @@ class JackDB:
 
             journaled, handler_name, args = _resolve(record)
             result = getattr(self, handler_name)(*args)
+
             if journaled:
                 self.records.append(record)
             if self.auto_commit and self.log_length < (len(self.records) - self.commit_size):
@@ -202,13 +203,29 @@ class JackDB:
         (up to ``log_length``) are never written twice.
         """
         with self._lock:
-            with self._log_lock(), open(self.replay_path, "a+", encoding="utf-8") as replay_file:
-                while self.log_length < len(self.records):
-                    string_record = json.dumps(self.records[self.log_length])
-                    replay_file.write(string_record + '\n')
-                    self.log_length += 1
-                replay_file.flush()
-                os.fsync(replay_file.fileno())
+            with self._log_lock(), open(self.replay_path, "a+b", buffering=0) as replay_file:
+                # Our starting states
+                log_offset = self.log_length
+                original_file_size = os.fstat(replay_file.fileno()).st_size
+                try:
+                    while log_offset < len(self.records):
+                        string_record = json.dumps(self.records[log_offset]) + '\n'
+                        # Check the amount of bytes written versus string length
+                        encoded_string = string_record.encode('utf-8')
+                        written_bytes = replay_file.write(encoded_string)
+                        # Check whether all bytes were written
+                        if written_bytes != len(encoded_string):
+                            raise OSError(f"Short journal write: "
+                                          f"wrote {written_bytes} of {len(encoded_string)} bytes")
+                        log_offset += 1
+                    replay_file.flush()
+                    os.fsync(replay_file.fileno())
+                except OSError:
+                    # Rollback the file
+                    os.ftruncate(replay_file.fileno(), original_file_size)
+                    os.fsync(replay_file.fileno())
+                    raise
+                self.log_length = log_offset
 
     def do_put(self, key, value):
         """Store ``value`` under ``key``, overwriting any existing value.
