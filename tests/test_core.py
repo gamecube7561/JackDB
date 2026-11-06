@@ -366,6 +366,7 @@ def test17():
                         return False
     return True
 
+
 def test18():
     """
     Test 18: API Set Test.
@@ -389,6 +390,31 @@ def test18():
         return False
     return True
 
+
+def test19():
+    """
+    Test 18: API Del Test.
+    :return:
+    """
+    init_test()
+    jdb = JackDB('./tests/test.txt')
+    app = serve_routes('Test', jdb)
+
+    client = TestClient(app)
+    input_data = {"field": "score", "value": 123}
+    put_resp = client.delete('Test/del/user:1', params=input_data)
+    print(put_resp.text)
+    get_resp = client.get('/Test/get/user:1')
+
+    if get_resp.status_code != 200 or put_resp.status_code != 200:
+        print("Response code not 200")
+        return False
+    if put_resp.text == {"message":"Item successfully deleted.","id":"user:1"} or get_resp.text != "null":
+        print("Result not correct")
+        return False
+    return True
+
+
 def run_tests():
     """Runs the tests."""
     passed = 0
@@ -411,7 +437,8 @@ def run_tests():
                  'test15': test15(),
                  'test16': test16(),
                  'test17': test17(),
-                 'test18': test18()
+                 'test18': test18(),
+                 'test19': test19()
                  }
 
     failed_tests = []

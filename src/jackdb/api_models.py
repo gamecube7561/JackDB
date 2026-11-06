@@ -20,3 +20,12 @@ class SetModel(BaseModel):
     """
     field: str
     value: str | int | float | dict | list | bool
+
+class DeleteResponse(BaseModel):
+    """
+    DELETE Response body.
+
+    Nulls are not supported by this HTTP endpoint.
+    """
+    message: str
+    id: int | str
