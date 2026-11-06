@@ -379,13 +379,14 @@ def test18():
     client = TestClient(app)
     input_data = {"field": "score", "value": 123}
     put_resp = client.put('Test/set/user:1', json=input_data)
-    get_resp = client.get('/Test/get/user:1')
 
-    if get_resp.status_code != 200 or put_resp.status_code != 200:
+    reopened = JackDB('./tests/test.txt')
+
+    if put_resp.status_code != 200:
         print("Response code not 200")
         return False
     if (put_resp.text != """{"name":"Aoba","score":123}"""
-            or get_resp.text != """{"name":"Aoba","score":123}"""):
+            or reopened.do_get("user:1") != {"name": "Aoba", "score": 123}):
         print("Result not correct")
         return False
     return True
@@ -393,24 +394,28 @@ def test18():
 
 def test19():
     """
-    Test 18: API Del Test.
+    Test 19: API Del Test.
     :return:
     """
     init_test()
     jdb = JackDB('./tests/test.txt')
-    app = serve_routes('Test', jdb)
 
+    app = serve_routes('Test', jdb)
     client = TestClient(app)
     input_data = {"field": "score", "value": 123}
-    put_resp = client.delete('Test/del/user:1', params=input_data)
+    del_resp = client.delete('Test/del/user:1', params=input_data)
 
-    get_resp = client.get('/Test/get/user:1')
+    reopened = JackDB('./tests/test.txt')
 
-    if get_resp.status_code != 200 or put_resp.status_code != 200:
+    if "user:1" in reopened:
+        print("user:1 found after reopen.")
+        return False
+
+    if del_resp.status_code != 200:
         print("Response code not 200")
         return False
-    if (put_resp.text == {"message": "Item successfully deleted.", "id": "user:1"}
-            or get_resp.text != "null"):
+
+    if del_resp.json() != {"message": "Item successfully deleted.", "id": "user:1"}:
         print("Result not correct")
         return False
     return True
