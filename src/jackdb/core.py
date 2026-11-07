@@ -111,8 +111,6 @@ class JackDB:
             if not self.has_new_line():
                 self.add_new_line()
 
-            with open(self.replay_path, "a+", encoding="utf-8") as f:
-                f.close()
             self.records = []  # rebuilt below: ``records`` mirrors the file
             self.log_length, torn = self._replay_log(journal=True)
             return not torn
@@ -227,17 +225,17 @@ class JackDB:
                     raise
                 self.log_length = log_offset
 
-    def do_put(self, key, value):
+    def do_put(self, key: str, value):
         """Store ``value`` under ``key``, overwriting any existing value.
 
-        :param key: Database key (anything JSON-serializable).
+        :param key: Database key.
         :param value: Value to store (anything JSON-serializable).
         :return: The stored value.
         """
         self.data_dict[key] = value
         return self.data_dict[key]
 
-    def do_del(self, key) -> bool:
+    def do_del(self, key: str) -> bool:
         """Remove ``key`` and its value from the database.
 
         :param key: Database key.
@@ -249,7 +247,7 @@ class JackDB:
         except KeyError:
             return False
 
-    def do_get(self, key):
+    def do_get(self, key: str):
         """Retrieve the value stored under a key.
 
         :param key: Database key.
@@ -257,7 +255,7 @@ class JackDB:
         """
         return self.data_dict.get(key)
 
-    def do_get_many(self, keys):
+    def do_get_many(self, keys: list[str]):
         """Retrieve values in bulk.
 
         :param keys: Array of database keys.
@@ -269,7 +267,7 @@ class JackDB:
             results.append(result)
         return results
 
-    def do_set(self, key, field, value):
+    def do_set(self, key: str, field, value):
         """Set a field of an already existing entry. Allowing for partial updates.
 
         :param key: Database key.
