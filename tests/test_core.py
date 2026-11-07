@@ -1,8 +1,10 @@
 """Driver for the tests."""
+import os
 import tempfile
 import json
 import shutil
 from pathlib import Path
+from unittest.mock import patch
 import test_items
 from fastapi.testclient import TestClient
 from jackdb import JackDB
@@ -366,6 +368,7 @@ def test17():
                         return False
     return True
 
+
 def test18():
     """
     Test 18: API Set Test.
@@ -378,16 +381,100 @@ def test18():
     client = TestClient(app)
     input_data = {"field": "score", "value": 123}
     put_resp = client.put('Test/set/user:1', json=input_data)
-    get_resp = client.get('/Test/get/user:1')
 
-    if get_resp.status_code != 200 or put_resp.status_code != 200:
+    reopened = JackDB('./tests/test.txt')
+
+    if put_resp.status_code != 200:
         print("Response code not 200")
         return False
     if (put_resp.text != """{"name":"Aoba","score":123}"""
-            or get_resp.text != """{"name":"Aoba","score":123}"""):
+            or reopened.do_get("user:1") != {"name": "Aoba", "score": 123}):
         print("Result not correct")
         return False
     return True
+
+
+def test19():
+    """
+    Test 19: API Del Test.
+    :return:
+    """
+    init_test()
+    jdb = JackDB('./tests/test.txt')
+
+    app = serve_routes('Test', jdb)
+    client = TestClient(app)
+    input_data = {"field": "score", "value": 123}
+    del_resp = client.delete('Test/del/user:1', params=input_data)
+
+    reopened = JackDB('./tests/test.txt')
+
+    if "user:1" in reopened:
+        print("user:1 found after reopen.")
+        return False
+
+    if del_resp.status_code != 200:
+        print("Response code not 200")
+        return False
+
+    if del_resp.json() != {"message": "Item successfully deleted.", "id": "user:1"}:
+        print("Result not correct")
+        return False
+    return True
+
+
+def test20():
+    """
+    Test 20: Commit Fsync error
+    :return:
+    """
+    init_test()
+    jdb = JackDB('./tests/test.txt', auto_commit=False)
+    jdb.do_operation(json.dumps(test_items.TEST_PUT_DATA2))
+
+    with open(jdb.replay_path, "a+b", buffering=0) as replay_file:
+        original_file_size = os.fstat(replay_file.fileno()).st_size
+
+    # Patch fsync to throw an error
+    with patch("jackdb.core.os.fsync", side_effect=[OSError("Thrown error"), None]) as p:
+        try:
+            jdb.commit()
+        except OSError:
+            pass
+        else:
+            print("OSError not thrown.")
+            return False
+        if p.call_count != 2:
+            print("There should have been 2 calls to os.fsync.")
+            return False
+
+    with open(jdb.replay_path, "a+b", buffering=0) as replay_file:
+        reopened_file_size = os.fstat(replay_file.fileno()).st_size
+
+    # reopened file should have rolled back from the errors.
+    if reopened_file_size != original_file_size:
+        print("Original File was not restored properly.")
+        return False
+
+    jdb.commit()
+
+    with open(jdb.replay_path, "a+b", buffering=0) as replay_file:
+        reopened_file_size = os.fstat(replay_file.fileno()).st_size
+
+    new_data_in_bytes = len((json.dumps(test_items.TEST_PUT_DATA2) + "\n").encode('utf-8'))
+
+    # We have successfully commited and made sure all the data is now written
+    if reopened_file_size != (original_file_size + new_data_in_bytes):
+        print("New records not properly commited.")
+        return False
+
+    with JackDB('./tests/test.txt', auto_commit=False) as reopened:
+        if reopened.do_get("user:3") != test_items.TEST_PUT_DATA2['v']:
+            print("Bad record retrieved form user:3.")
+            return False
+
+    return True
+
 
 def run_tests():
     """Runs the tests."""
@@ -411,7 +498,9 @@ def run_tests():
                  'test15': test15(),
                  'test16': test16(),
                  'test17': test17(),
-                 'test18': test18()
+                 'test18': test18(),
+                 'test19': test19(),
+                 'test20': test20()
                  }
 
     failed_tests = []

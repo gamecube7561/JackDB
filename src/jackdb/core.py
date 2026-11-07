@@ -111,8 +111,6 @@ class JackDB:
             if not self.has_new_line():
                 self.add_new_line()
 
-            with open(self.replay_path, "a+", encoding="utf-8") as f:
-                f.close()
             self.records = []  # rebuilt below: ``records`` mirrors the file
             self.log_length, torn = self._replay_log(journal=True)
             return not torn
@@ -188,6 +186,7 @@ class JackDB:
 
             journaled, handler_name, args = _resolve(record)
             result = getattr(self, handler_name)(*args)
+
             if journaled:
                 self.records.append(record)
             if self.auto_commit and self.log_length < (len(self.records) - self.commit_size):
@@ -202,25 +201,44 @@ class JackDB:
         (up to ``log_length``) are never written twice.
         """
         with self._lock:
-            with self._log_lock(), open(self.replay_path, "a+", encoding="utf-8") as replay_file:
-                while self.log_length < len(self.records):
-                    string_record = json.dumps(self.records[self.log_length])
-                    replay_file.write(string_record + '\n')
-                    self.log_length += 1
-                replay_file.flush()
-                os.fsync(replay_file.fileno())
+            with self._log_lock(), open(self.replay_path, "a+b", buffering=0) as replay_file:
+                # Our starting states
+                log_offset = self.log_length
+                original_file_size = os.fstat(replay_file.fileno()).st_size
+                try:
+                    serialized_records = []
+                    while log_offset < len(self.records):
+                        string_record = json.dumps(self.records[log_offset]) + '\n'
+                        encoded_string = string_record.encode('utf-8')
+                        serialized_records.append(encoded_string)
+                        log_offset += 1
+                    for s_record in serialized_records:
+                        # Check the amount of bytes written versus string length
+                        written_bytes = replay_file.write(s_record)
+                        # Check whether all bytes were written
+                        if written_bytes != len(s_record):
+                            raise OSError(f"Short journal write: "
+                                          f"wrote {written_bytes} of {len(s_record)} bytes")
+                    replay_file.flush()
+                    os.fsync(replay_file.fileno())
+                except OSError:
+                    # Rollback the file
+                    os.ftruncate(replay_file.fileno(), original_file_size)
+                    os.fsync(replay_file.fileno())
+                    raise
+                self.log_length = log_offset
 
-    def do_put(self, key, value):
+    def do_put(self, key: str, value):
         """Store ``value`` under ``key``, overwriting any existing value.
 
-        :param key: Database key (anything JSON-serializable).
+        :param key: Database key.
         :param value: Value to store (anything JSON-serializable).
         :return: The stored value.
         """
         self.data_dict[key] = value
         return self.data_dict[key]
 
-    def do_del(self, key) -> bool:
+    def do_del(self, key: str) -> bool:
         """Remove ``key`` and its value from the database.
 
         :param key: Database key.
@@ -232,7 +250,7 @@ class JackDB:
         except KeyError:
             return False
 
-    def do_get(self, key):
+    def do_get(self, key: str):
         """Retrieve the value stored under a key.
 
         :param key: Database key.
@@ -240,7 +258,7 @@ class JackDB:
         """
         return self.data_dict.get(key)
 
-    def do_get_many(self, keys):
+    def do_get_many(self, keys: list[str]):
         """Retrieve values in bulk.
 
         :param keys: Array of database keys.
@@ -252,7 +270,7 @@ class JackDB:
             results.append(result)
         return results
 
-    def do_set(self, key, field, value):
+    def do_set(self, key: str, field, value):
         """Set a field of an already existing entry. Allowing for partial updates.
 
         :param key: Database key.
