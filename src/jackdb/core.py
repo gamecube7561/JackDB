@@ -206,16 +206,19 @@ class JackDB:
                 log_offset = self.log_length
                 original_file_size = os.fstat(replay_file.fileno()).st_size
                 try:
+                    serialized_records = []
                     while log_offset < len(self.records):
                         string_record = json.dumps(self.records[log_offset]) + '\n'
-                        # Check the amount of bytes written versus string length
                         encoded_string = string_record.encode('utf-8')
-                        written_bytes = replay_file.write(encoded_string)
-                        # Check whether all bytes were written
-                        if written_bytes != len(encoded_string):
-                            raise OSError(f"Short journal write: "
-                                          f"wrote {written_bytes} of {len(encoded_string)} bytes")
+                        serialized_records.append(encoded_string)
                         log_offset += 1
+                    for s_record in serialized_records:
+                        # Check the amount of bytes written versus string length
+                        written_bytes = replay_file.write(s_record)
+                        # Check whether all bytes were written
+                        if written_bytes != len(s_record):
+                            raise OSError(f"Short journal write: "
+                                          f"wrote {written_bytes} of {len(s_record)} bytes")
                     replay_file.flush()
                     os.fsync(replay_file.fileno())
                 except OSError:
