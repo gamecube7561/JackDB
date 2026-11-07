@@ -1,8 +1,10 @@
 """Driver for the tests."""
+import os
 import tempfile
 import json
 import shutil
 from pathlib import Path
+from unittest.mock import patch
 import test_items
 from fastapi.testclient import TestClient
 from jackdb import JackDB
@@ -421,6 +423,59 @@ def test19():
     return True
 
 
+def test20():
+    """
+    Test 20: Commit Fsync error
+    :return:
+    """
+    init_test()
+    jdb = JackDB('./tests/test.txt', auto_commit=False)
+    jdb.do_operation(json.dumps(test_items.TEST_PUT_DATA2))
+
+    with open(jdb.replay_path, "a+b", buffering=0) as replay_file:
+        original_file_size = os.fstat(replay_file.fileno()).st_size
+
+    # Patch fsync to throw an error
+    with patch("jackdb.core.os.fsync", side_effect=[OSError("Thrown error"), None]) as p:
+        try:
+            jdb.commit()
+        except OSError:
+            pass
+        else:
+            print("OSError not thrown.")
+            return False
+        if p.call_count != 2:
+            print("There should have been 2 calls to os.fsync.")
+            return False
+
+    with open(jdb.replay_path, "a+b", buffering=0) as replay_file:
+        reopened_file_size = os.fstat(replay_file.fileno()).st_size
+
+    # reopened file should have rolled back from the errors.
+    if reopened_file_size != original_file_size:
+        print("Original File was not restored properly.")
+        return False
+
+    jdb.commit()
+
+    with open(jdb.replay_path, "a+b", buffering=0) as replay_file:
+        reopened_file_size = os.fstat(replay_file.fileno()).st_size
+
+    new_data_in_bytes = len((json.dumps(test_items.TEST_PUT_DATA2) + "\n").encode('utf-8'))
+
+    # We have successfully commited and made sure all the data is now written
+    if reopened_file_size != (original_file_size + new_data_in_bytes):
+        print("New records not properly commited.")
+        return False
+
+    with JackDB('./tests/test.txt', auto_commit=False) as reopened:
+        if reopened.do_get("user:3") != test_items.TEST_PUT_DATA2['v']:
+            print("Bad record retrieved form user:3.")
+            return False
+
+    return True
+
+
 def run_tests():
     """Runs the tests."""
     passed = 0
@@ -444,7 +499,8 @@ def run_tests():
                  'test16': test16(),
                  'test17': test17(),
                  'test18': test18(),
-                 'test19': test19()
+                 'test19': test19(),
+                 'test20': test20()
                  }
 
     failed_tests = []
