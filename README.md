@@ -3,7 +3,7 @@
 JackDB is an embedded Python key-value database backed by a JSON Lines
 append-only log. Data is held in memory, replayed from disk when opened, and
 persisted through explicit or automatic commits. A FastAPI integration exposes
-size, get, and put endpoints.
+size, get, put, set, and del endpoints.
 
 ## Installation
 
@@ -181,6 +181,11 @@ returns the stored value. `PUT /demo/set/{key}` accepts a body such as
 JSON object and returns the updated object. A missing key or a value that is
 not an object returns HTTP 409. Each successful PUT commits pending operations
 before responding, regardless of `auto_commit`.
+
+`DELETE /demo/del/{key}` takes no request body, removes the key if present,
+and commits pending operations. It returns HTTP 200 with
+`{"message": "Item successfully deleted.", "id": "<key>"}` even if the key
+was already absent.
 
 Both PUT endpoints require a `value` field and accept strings, integers,
 fractional numbers, JSON objects, arrays, and booleans. Objects and arrays can
