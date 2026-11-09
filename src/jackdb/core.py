@@ -25,7 +25,7 @@ class JackDB:
     """
 
     def __init__(self, replay_path: str = "", auto_commit: bool = True,
-                 commit_size: int = 10, db_name: None | str = None):
+                 commit_size: int = 1, db_name: None | str = None):
         """Open (or create) the log file and replay it into memory.
 
         :param replay_path: Path to the JSON Lines log file. Required.
@@ -189,44 +189,12 @@ class JackDB:
 
             if journaled:
                 self.records.append(record)
-            if self.auto_commit and self.log_length < (len(self.records) - self.commit_size):
-                self.commit()
+
+                # Placed in this block so only mutating operations trigger auto commit.
+                if self.auto_commit and self.log_length <= (len(self.records) - self.commit_size):
+                    self.commit()
+
             return result
-
-    def commit(self):
-        """Append all pending records to the log file and flush it to disk.
-
-        This is the commit point: a record mutated in memory only survives a
-        crash or reopen once it has been flushed. Already-persisted records
-        (up to ``log_length``) are never written twice.
-        """
-        with self._lock:
-            with self._log_lock(), open(self.replay_path, "a+b", buffering=0) as replay_file:
-                # Our starting states
-                log_offset = self.log_length
-                original_file_size = os.fstat(replay_file.fileno()).st_size
-                try:
-                    serialized_records = []
-                    while log_offset < len(self.records):
-                        string_record = json.dumps(self.records[log_offset]) + '\n'
-                        encoded_string = string_record.encode('utf-8')
-                        serialized_records.append(encoded_string)
-                        log_offset += 1
-                    for s_record in serialized_records:
-                        # Check the amount of bytes written versus string length
-                        written_bytes = replay_file.write(s_record)
-                        # Check whether all bytes were written
-                        if written_bytes != len(s_record):
-                            raise OSError(f"Short journal write: "
-                                          f"wrote {written_bytes} of {len(s_record)} bytes")
-                    replay_file.flush()
-                    os.fsync(replay_file.fileno())
-                except OSError:
-                    # Rollback the file
-                    os.ftruncate(replay_file.fileno(), original_file_size)
-                    os.fsync(replay_file.fileno())
-                    raise
-                self.log_length = log_offset
 
     def do_put(self, key: str, value):
         """Store ``value`` under ``key``, overwriting any existing value.
@@ -288,6 +256,41 @@ class JackDB:
         self.data_dict[key] = db_data
 
         return self.data_dict[key]
+
+    def commit(self):
+        """Append all pending records to the log file and flush it to disk.
+
+        This is the commit point: a record mutated in memory only survives a
+        crash or reopen once it has been flushed. Already-persisted records
+        (up to ``log_length``) are never written twice.
+        """
+        with self._lock:
+            with self._log_lock(), open(self.replay_path, "a+b", buffering=0) as replay_file:
+                # Our starting states
+                log_offset = self.log_length
+                original_file_size = os.fstat(replay_file.fileno()).st_size
+                try:
+                    serialized_records = []
+                    while log_offset < len(self.records):
+                        string_record = json.dumps(self.records[log_offset]) + '\n'
+                        encoded_string = string_record.encode('utf-8')
+                        serialized_records.append(encoded_string)
+                        log_offset += 1
+                    for s_record in serialized_records:
+                        # Check the amount of bytes written versus string length
+                        written_bytes = replay_file.write(s_record)
+                        # Check whether all bytes were written
+                        if written_bytes != len(s_record):
+                            raise OSError(f"Short journal write: "
+                                          f"wrote {written_bytes} of {len(s_record)} bytes")
+                    replay_file.flush()
+                    os.fsync(replay_file.fileno())
+                except OSError:
+                    # Rollback the file
+                    os.ftruncate(replay_file.fileno(), original_file_size)
+                    os.fsync(replay_file.fileno())
+                    raise
+                self.log_length = log_offset
 
     def compact(self):
         """Rewrite the log as one ``put`` record per live key, dropping

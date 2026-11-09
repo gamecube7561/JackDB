@@ -44,14 +44,14 @@ keys; tuples in values become lists after reopening.
 ```python
 from jackdb import JackDB
 
-JackDB(replay_path="", auto_commit=True, commit_size=10, db_name="")
+JackDB(replay_path="", auto_commit=True, commit_size=1, db_name="")
 ```
 
-| Argument | Behavior |
-| --- | --- |
-| `replay_path` | Required nonempty string path. Creates the log if absent; its parent directory must already exist. |
-| `auto_commit` | Enables automatic commits during `do_operation()`. Defaults to `True`. |
-| `commit_size` | Commits when pending records **exceed** this number. The default `10` commits on the 11th pending mutation. |
+| Argument | Behavior                                                                                                                   |
+| --- |----------------------------------------------------------------------------------------------------------------------------|
+| `replay_path` | Required nonempty string path. Creates the log if absent; its parent directory must already exist.                         |
+| `auto_commit` | Enables automatic commits during `do_operation()`. Defaults to `True`.                                                     |
+| `commit_size` | Commits when pending records **reach** this number. The default `1` commits on the first pending mutation.                 |
 | `db_name` | A nonempty name builds a FastAPI app and attaches it as `db.api`. Defaults to an empty string, leaving `db.api` as `None`. |
 
 ### Operations
