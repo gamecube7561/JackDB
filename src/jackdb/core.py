@@ -46,7 +46,6 @@ class JackDB:
 
         self._log_version = None
         self._lock = threading.RLock()
-        self.api = None
 
         if self.replay_path == "":
             raise ValueError("replay_path is required")
@@ -178,7 +177,12 @@ class JackDB:
         args = [db] + args
         return getattr(self, handler_name)(*args)
 
-    def execute_and_commit(self, operation):
+    def execute_and_commit(self, operation) -> list[CommitQueueItem]:
+        """
+        Execute, commit, and returns a list of the mutating operation results.
+        :param operation:
+        :return:
+        """
         with self._lock:
             try:
                 record = json.loads(operation) if not isinstance(operation, dict) else operation
@@ -225,6 +229,7 @@ class JackDB:
             return result
 
     def _enqueue(self, handler_name, args, record):
+        # Deep copy to prevent the record being changed as easily
         item = deepcopy(CommitQueueItem(handler_name, args, record))
         self.records.append(item)
         return item
@@ -334,9 +339,7 @@ class JackDB:
 
                     for record, encoded_string in pending_records:
                         try:
-                            handler = record.handler
-                            args = record.args
-                            result = getattr(self, handler)(data_dict_copy, *args)
+                            result = getattr(self, record.handler)(data_dict_copy, *record.args)
                             # Check the amount of bytes written versus string length
                             record.result = result
                             results.append(record)

@@ -15,14 +15,26 @@ class CommitQueueItem:
 
     @property
     def handler(self) -> str:
+        """
+        Returns the handler property.
+        :return:
+        """
         return self._handler
 
     @property
     def args(self):
+        """
+        Returns the args property.
+        :return:
+        """
         return self._args
 
     @property
     def record(self):
+        """
+        Returns the record property.
+        :return:
+        """
         return self._record
 
     def set_error(self, error):
