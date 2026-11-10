@@ -38,9 +38,8 @@ def serve_routes(db_name: str, db: JackDB) -> FastAPI:
             'k': db_key,
             'v': encoded_item['value']
         }
-        result = db.do_operation(op)
-        db.commit()
-        return result
+        result = db.execute_and_commit(op)
+        return result[-1].result
 
     @app.put(path_prefix + "/set/{db_key}")
     def set_item(db_key: str, db_value: SetModel):
@@ -52,11 +51,12 @@ def serve_routes(db_name: str, db: JackDB) -> FastAPI:
             'v': encoded_item['value']
         }
         try:
-            result = db.do_operation(op)
-            db.commit()
+            result = db.execute_and_commit(op)
+            if result[-1].error:
+                raise result[-1].error
         except JdbException as exc:
             raise HTTPException(status_code=409, detail="Error occurred during operation.") from exc
-        return result
+        return result[-1].result
 
     @app.delete(path_prefix + "/del/{db_key}")
     def del_item(db_key: str):
@@ -65,8 +65,9 @@ def serve_routes(db_name: str, db: JackDB) -> FastAPI:
             'k': db_key
         }
         try:
-            db.do_operation(op)
-            db.commit()
+            result = db.execute_and_commit(op)
+            if result[-1].error:
+                raise result[-1].error
         except JdbException as exc:
             raise HTTPException(status_code=409, detail="Error occurred during operation.") from exc
         return DeleteResponse(message="Item successfully deleted.", id=db_key)

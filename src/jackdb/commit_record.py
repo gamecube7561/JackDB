@@ -7,11 +7,23 @@ class CommitQueueItem:
     """
 
     def __init__(self, handler, args, record):
-        self.handler = handler
-        self.args = args
-        self.record = record
+        self._handler = handler
+        self._args = args
+        self._record = record
         self.error = None
         self.result = None
+
+    @property
+    def handler(self) -> str:
+        return self._handler
+
+    @property
+    def args(self):
+        return self._args
+
+    @property
+    def record(self):
+        return self._record
 
     def set_error(self, error):
         """

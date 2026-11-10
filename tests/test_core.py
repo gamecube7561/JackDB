@@ -476,6 +476,91 @@ def test20():
     return True
 
 
+def test21():
+    """
+    Test 21: A rejected SET does not block the next commit.
+    :return:
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        replay_path = str(Path(temp_dir) / "db.log")
+        jdb = JackDB(replay_path, auto_commit=False)
+
+        jdb.do_operation({"op": "set", "k": "missing", "f": "field", "v": 1})
+        results = jdb.commit()
+        if len(results) != 1 or not isinstance(results[0].error, JdbException):
+            print("SET on a missing key should have been rejected.")
+            return False
+
+        try:
+            jdb.do_operation({"op": "put", "k": "valid", "v": 2})
+            jdb.commit()
+        except JdbException as exc:
+            print(f"The rejected SET blocked the next PUT: {exc}")
+            return False
+
+        reopened = JackDB(replay_path)
+        if reopened.do_get("valid") != 2:
+            print("PUT after rejected SET did not persist.")
+            return False
+    return True
+
+
+def test22():
+    """
+    Test 22: A stale SET is rejected after another writer commits DEL.
+    :return:
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        replay_path = str(Path(temp_dir) / "db.log")
+        writer = JackDB(replay_path, auto_commit=False)
+        writer.do_operation({"op": "put", "k": "key", "v": {"field": 0}})
+        writer.commit()
+        stale_writer = JackDB(replay_path, auto_commit=False)
+        writer.do_operation({"op": "del", "k": "key"})
+        writer.commit()
+
+        stale_writer.do_operation({"op": "set", "k": "key", "f": "field", "v": 1})
+        results = stale_writer.commit()
+        try:
+            reopened = JackDB(replay_path)
+        except JdbException as exc:
+            print(f"The stale SET made the log unreplayable: {exc}")
+            return False
+
+        if len(results) != 1 or not isinstance(results[0].error, JdbException):
+            print("Stale SET was not rejected.")
+            return False
+        if reopened.do_get("key") is not None:
+            print("Deleted key is present after reopening.")
+            return False
+    return True
+
+
+def test23():
+    """
+    Test 23: A queued PUT preserves the original operation.
+    :return:
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        replay_path = str(Path(temp_dir) / "db.log")
+        jdb = JackDB(replay_path, auto_commit=False)
+        operation = {"op": "put", "k": "original", "v": {"score": 1}}
+        jdb.do_operation(operation)
+        operation["k"] = "edited"
+        operation["v"]["score"] = 2
+        jdb.commit()
+
+        reopened = JackDB(replay_path)
+        expected = {"score": 1}
+        if jdb.do_get("original") != expected or jdb.do_get("edited") is not None:
+            print("Editing the queued PUT changed the live database.")
+            return False
+        if reopened.do_get("original") != expected or reopened.do_get("edited") is not None:
+            print("Editing the queued PUT changed the replayed database.")
+            return False
+    return True
+
+
 def run_tests():
     """Runs the tests."""
     passed = 0
@@ -500,7 +585,10 @@ def run_tests():
                  'test17': test17(),
                  'test18': test18(),
                  'test19': test19(),
-                 'test20': test20()
+                 'test20': test20(),
+                 'test21': test21(),
+                 'test22': test22(),
+                 'test23': test23()
                  }
 
     failed_tests = []

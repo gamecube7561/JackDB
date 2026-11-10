@@ -5,10 +5,12 @@ import os
 import fcntl
 import threading
 from contextlib import contextmanager
+from copy import deepcopy
 from io import TextIOWrapper
 from json import JSONDecodeError
 from jackdb.exceptions import JdbException
 from jackdb.operations import _resolve
+from jackdb.commit_record import CommitQueueItem
 
 
 class JackDB:
@@ -42,6 +44,7 @@ class JackDB:
         self.commit_size = commit_size
         self.db_name = db_name
 
+        self._log_version = None
         self._lock = threading.RLock()
         self.api = None
 
@@ -93,7 +96,7 @@ class JackDB:
             finally:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
-    def load_from_file(self, ) -> bool:
+    def load_from_file(self) -> bool:
         """Replay the log file from the start into ``data_dict``.
 
         A torn final line (and anything after it) is discarded and truncated
@@ -112,16 +115,25 @@ class JackDB:
                 self.add_new_line()
 
             self.records = []  # rebuilt below: ``records`` mirrors the file
-            self.log_length, torn = self._replay_log(journal=True)
+            data_dict = {}
+            self.log_length, torn = self._replay_log(data_dict, journal=True)
+            self.data_dict = data_dict
+            self._log_version = self._file_version(os.stat(self.replay_path))
             return not torn
 
-    def _replay_log(self, journal: bool = False) -> tuple:
+    @staticmethod
+    def _file_version(stat: os.stat_result) -> tuple:
+        """Identify the log and detect changes made by cooperating writers."""
+        return stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns
+
+    def _replay_log(self, db: dict, journal: bool = False) -> tuple:
         """Apply every complete, valid record in the log file to ``data_dict``.
 
         Stops at the first line that is not valid JSON (a torn final line);
         the fragment and everything after it is truncated away so the file ends
         cleanly after the last valid record.
 
+        :param db: Database to use.
         :param journal: When True (initial load), also append each record to
             ``records`` so the in-memory bookkeeping mirrors the file — this is
             what keeps ``log_length`` aligned and stops ``commit`` from
@@ -142,7 +154,7 @@ class JackDB:
                 record = json.loads(line)
             except JSONDecodeError:
                 break
-            self._apply(record)
+            self._apply(db, record)
             if journal:
                 self.records.append(record)
             offset += len(line) + 1  # +1 for the '\n'
@@ -154,15 +166,30 @@ class JackDB:
                 byte_file.truncate(offset)
         return count, torn
 
-    def _apply(self, record):
+    def _apply(self, db: dict, record):
         """Validate and execute one operation record without journaling it.
 
         Used for log replay, where the record is already persisted.
 
+        :param db: Database to use.
         :return: The result of the underlying do_* handler call.
         """
         _, handler_name, args = _resolve(record)
+        args = [db] + args
         return getattr(self, handler_name)(*args)
+
+    def execute_and_commit(self, operation):
+        with self._lock:
+            try:
+                record = json.loads(operation) if not isinstance(operation, dict) else operation
+            except JSONDecodeError as e:
+                raise JdbException("Operation is not valid JSON.", 5) from e
+
+            journaled, handler_name, args = _resolve(record)
+            if journaled:
+                self._enqueue(handler_name, args, record)
+            results = self.commit()
+            return results
 
     def do_operation(self, operation):
         """Execute one database operation given as a dict or a JSON string.
@@ -185,35 +212,43 @@ class JackDB:
                 raise JdbException("Operation is not valid JSON.", 5) from e
 
             journaled, handler_name, args = _resolve(record)
-            result = getattr(self, handler_name)(*args)
 
             if journaled:
-                self.records.append(record)
-
+                self._enqueue(handler_name, args, record)
+                result = {"status": "pending"}
                 # Placed in this block so only mutating operations trigger auto commit.
                 if self.auto_commit and self.log_length <= (len(self.records) - self.commit_size):
                     self.commit()
+            else:
+                result = getattr(self, handler_name)(*args)
 
             return result
 
-    def do_put(self, key: str, value):
+    def _enqueue(self, handler_name, args, record):
+        item = deepcopy(CommitQueueItem(handler_name, args, record))
+        self.records.append(item)
+        return item
+
+    def do_put(self, db: dict, key: str, value):
         """Store ``value`` under ``key``, overwriting any existing value.
 
+        :param db: Database to use.
         :param key: Database key.
         :param value: Value to store (anything JSON-serializable).
         :return: The stored value.
         """
-        self.data_dict[key] = value
-        return self.data_dict[key]
+        db[key] = value
+        return db[key]
 
-    def do_del(self, key: str) -> bool:
+    def do_del(self, db: dict, key: str) -> bool:
         """Remove ``key`` and its value from the database.
 
+        :param db: Database to use.
         :param key: Database key.
         :return: True if the key existed and was removed, False otherwise.
         """
         try:
-            del self.data_dict[key]
+            del db[key]
             return True
         except KeyError:
             return False
@@ -238,26 +273,28 @@ class JackDB:
             results.append(result)
         return results
 
-    def do_set(self, key: str, field, value):
+    def do_set(self, db: dict, key: str, field, value):
         """Set a field of an already existing entry. Allowing for partial updates.
 
+        :param db: Database to use.
         :param key: Database key.
         :param field: Field key.
         :param value: The value.
         :return:
         """
         try:
-            db_data = self.data_dict[key]
+            db_data = db[key]
         except KeyError as e:
             raise JdbException("Key does not exist.", 2) from e
         if not isinstance(db_data, dict):
             raise JdbException("Field must contain JSON data.", 1)
+
         db_data[field] = value
-        self.data_dict[key] = db_data
+        db[key] = db_data
 
-        return self.data_dict[key]
+        return db[key]
 
-    def commit(self):
+    def commit(self) -> list[CommitQueueItem]:
         """Append all pending records to the log file and flush it to disk.
 
         This is the commit point: a record mutated in memory only survives a
@@ -265,32 +302,70 @@ class JackDB:
         (up to ``log_length``) are never written twice.
         """
         with self._lock:
+            if self.log_length == len(self.records):
+                return []
+
             with self._log_lock(), open(self.replay_path, "a+b", buffering=0) as replay_file:
-                # Our starting states
+                # Reuse the cached state only while it matches the current log.
+                log_stat = os.fstat(replay_file.fileno())
+
+                if self._file_version(log_stat) == self._log_version:
+                    # Our version of the dict is the most current
+                    data_dict_copy = deepcopy(self.data_dict)
+                else:
+                    # Our dict has been modified, and must reload it from file
+                    data_dict_copy = {}
+                    self._replay_log(data_dict_copy)
+                    log_stat = os.fstat(replay_file.fileno())
+
                 log_offset = self.log_length
-                original_file_size = os.fstat(replay_file.fileno()).st_size
+                original_file_size = log_stat.st_size
+                results = []
+                encoded_strings = []
                 try:
-                    serialized_records = []
+                    pending_records = []
+
                     while log_offset < len(self.records):
-                        string_record = json.dumps(self.records[log_offset]) + '\n'
+                        record: CommitQueueItem = self.records[log_offset]
+                        string_record = json.dumps(record.record) + '\n'
                         encoded_string = string_record.encode('utf-8')
-                        serialized_records.append(encoded_string)
+                        pending_records.append((record, encoded_string))
                         log_offset += 1
-                    for s_record in serialized_records:
-                        # Check the amount of bytes written versus string length
-                        written_bytes = replay_file.write(s_record)
+
+                    for record, encoded_string in pending_records:
+                        try:
+                            handler = record.handler
+                            args = record.args
+                            result = getattr(self, handler)(data_dict_copy, *args)
+                            # Check the amount of bytes written versus string length
+                            record.result = result
+                            results.append(record)
+                            encoded_strings.append(encoded_string)
+                        except JdbException as e:
+                            record.set_error(e)
+                            results.append(record)
+                            continue
+
+                    for encoded_string in encoded_strings:
+                        written_bytes = replay_file.write(encoded_string)
                         # Check whether all bytes were written
-                        if written_bytes != len(s_record):
+                        if written_bytes != len(encoded_string):
                             raise OSError(f"Short journal write: "
-                                          f"wrote {written_bytes} of {len(s_record)} bytes")
+                                          f"wrote {written_bytes} of "
+                                          f"{len(encoded_string)} bytes")
+
+                    pending_records.clear()
                     replay_file.flush()
                     os.fsync(replay_file.fileno())
+                    self._log_version = self._file_version(os.fstat(replay_file.fileno()))
+                    self.data_dict = data_dict_copy
                 except OSError:
                     # Rollback the file
                     os.ftruncate(replay_file.fileno(), original_file_size)
                     os.fsync(replay_file.fileno())
                     raise
                 self.log_length = log_offset
+                return results
 
     def compact(self):
         """Rewrite the log as one ``put`` record per live key, dropping
@@ -315,10 +390,13 @@ class JackDB:
                 # then re-apply this instance's still-pending mutations on top
                 # (this instance commits last, so its pending records win).
                 pending = self.records[self.log_length:]
-                self.data_dict = {}
-                self._replay_log()
+                pending_dict_copy = {}
+                self._replay_log(pending_dict_copy)
+
                 for record in pending:
-                    self._apply(record)
+                    handler = record.handler
+                    args = record.args
+                    getattr(self, handler)(pending_dict_copy, *args)
 
                 dir_fd = os.open(os.path.dirname(self.replay_path) or '.', os.O_RDONLY)
                 try:
@@ -327,7 +405,8 @@ class JackDB:
                             prefix="jackdb-compact-", suffix=".json", delete=False
                     ) as temp_file:
                         temp_name = temp_file.name
-                        for key, value in self.data_dict.items():
+
+                        for key, value in pending_dict_copy.items():
                             temp_record = {"op": "put", "k": key, "v": value}
                             new_records.append(temp_record)
                             temp_file.write(json.dumps(temp_record) + '\n')
@@ -335,12 +414,14 @@ class JackDB:
                         os.fsync(temp_file.fileno())
                         os.replace(temp_name, self.replay_path)
                         os.fsync(dir_fd)
+                        self._log_version = self._file_version(os.fstat(temp_file.fileno()))
                 except Exception:
                     if temp_name and os.path.exists(temp_name):
                         os.remove(temp_name)
                     raise
                 finally:
                     os.close(dir_fd)
+                self.data_dict = pending_dict_copy
 
                 self.records = new_records
                 self.log_length = len(new_records)
