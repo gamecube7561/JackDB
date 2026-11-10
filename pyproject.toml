@@ -1,6 +1,6 @@
 [project]
 name = "JackDB"
-version = "0.2.2"
+version = "0.3.1"
 requires-python = ">=3.10"
 dependencies = [
     "fastapi[standard]>=0.162.0",
