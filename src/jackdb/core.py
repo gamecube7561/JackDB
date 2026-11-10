@@ -180,7 +180,9 @@ class JackDB:
     def execute_and_commit(self, operation) -> list[CommitQueueItem]:
         """
         Execute, commit, and returns a list of the mutating operation results.
-        :param operation:
+        :param operation: A dict (or JSON string) with an ``op`` key —
+            ``put`` (``k``, ``v``), ``del`` (``k``), ``get`` (``k``),
+            ``get_many`` (``k``) or ``set`` (``k``, ``f``, ``v``).
         :return:
         """
         with self._lock:
@@ -307,6 +309,7 @@ class JackDB:
         (up to ``log_length``) are never written twice.
         """
         with self._lock:
+            # No record changes
             if self.log_length == len(self.records):
                 return []
 
@@ -330,6 +333,7 @@ class JackDB:
                 try:
                     pending_records = []
 
+                    # Create our pending records queue
                     while log_offset < len(self.records):
                         record: CommitQueueItem = self.records[log_offset]
                         string_record = json.dumps(record.record) + '\n'
@@ -337,6 +341,7 @@ class JackDB:
                         pending_records.append((record, encoded_string))
                         log_offset += 1
 
+                    # Apply the record to the temp dict and add results to the record
                     for record, encoded_string in pending_records:
                         try:
                             result = getattr(self, record.handler)(data_dict_copy, *record.args)
@@ -349,6 +354,7 @@ class JackDB:
                             results.append(record)
                             continue
 
+                    # Write to log file
                     for encoded_string in encoded_strings:
                         written_bytes = replay_file.write(encoded_string)
                         # Check whether all bytes were written
@@ -357,7 +363,8 @@ class JackDB:
                                           f"wrote {written_bytes} of "
                                           f"{len(encoded_string)} bytes")
 
-                    pending_records.clear()
+
+                    # Apply the changes
                     replay_file.flush()
                     os.fsync(replay_file.fileno())
                     self._log_version = self._file_version(os.fstat(replay_file.fileno()))

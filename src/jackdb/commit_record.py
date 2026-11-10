@@ -51,4 +51,4 @@ class CommitQueueItem:
         :param result:
         :return:
         """
-        self.result  = result
+        self.result = result
