@@ -1,6 +1,7 @@
 """Module containing models to be used for API operations"""
 from pydantic import BaseModel
 
+
 class PutModel(BaseModel):
     """
     PUT body with a required string or JSON object value.
@@ -9,6 +10,7 @@ class PutModel(BaseModel):
     Nulls are not supported by this HTTP endpoint.
     """
     value: str | int | float | dict | list | bool
+
 
 class SetModel(BaseModel):
     """
@@ -20,6 +22,7 @@ class SetModel(BaseModel):
     """
     field: str
     value: str | int | float | dict | list | bool
+
 
 class DeleteResponse(BaseModel):
     """
