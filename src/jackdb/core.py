@@ -69,7 +69,7 @@ class JackDB:
         return iter(self.data_dict)
 
     def __getitem__(self, key):
-        return self.data_dict[key]
+        return deepcopy(self.data_dict[key])
 
     def keys(self):
         """
@@ -98,6 +98,8 @@ class JackDB:
     def load_from_file(self) -> bool:
         """Replay the log file from the start into ``data_dict``.
 
+        Invalid records are skipped.
+
         A torn final line (and anything after it) is discarded and truncated
         away so the next append cannot merge onto it. Afterward ``log_length``
         marks how many records were already persisted, so only new records get
@@ -115,7 +117,7 @@ class JackDB:
 
             self.records = []  # rebuilt below: ``records`` mirrors the file
             data_dict = {}
-            self.log_length, torn = self._replay_log(data_dict, journal=True)
+            self.log_length, torn, _ = self._replay_log(data_dict, journal=True)
             self.data_dict = data_dict
             self._log_version = self._file_version(os.stat(self.replay_path))
             return not torn
@@ -146,24 +148,33 @@ class JackDB:
 
         offset = 0  # byte offset just past the last complete, valid record
         count = 0
+        bad_records = []
+        tail_offset = 0
+
         for line in raw.split(b'\n'):
-            if line == b'':
-                break
+            offset += len(line) + 1  # +1 for the '\n'
+
             try:
                 record = json.loads(line)
-            except JSONDecodeError:
-                break
-            self._apply(db, record)
-            if journal:
-                self.records.append(record)
-            offset += len(line) + 1  # +1 for the '\n'
-            count += 1
+            except (JSONDecodeError, UnicodeDecodeError):
+                continue
 
-        torn = offset < len(raw)
+            tail_offset = offset
+
+            try:
+                self._apply(db, record)
+                if journal:
+                    self.records.append(record)
+                count += 1
+            except (JdbException, TypeError):
+                bad_records.append(record)
+                continue
+
+        torn = tail_offset < len(raw)
         if torn:
             with open(self.replay_path, "r+b") as byte_file:
-                byte_file.truncate(offset)
-        return count, torn
+                byte_file.truncate(tail_offset)
+        return count, torn, bad_records
 
     def _apply(self, db: dict, record):
         """Validate and execute one operation record without journaling it.
@@ -174,6 +185,8 @@ class JackDB:
         :return: The result of the underlying do_* handler call.
         """
         _, handler_name, args = _resolve(record)
+        if args[0] and not isinstance(args[0], str):
+            raise JdbException("Operation key field must be of type str.", 7)
         args = [db] + args
         return getattr(self, handler_name)(*args)
 
@@ -245,7 +258,7 @@ class JackDB:
         :return: The stored value.
         """
         db[key] = value
-        return db[key]
+        return deepcopy(db[key])
 
     def do_del(self, db: dict, key: str) -> bool:
         """Remove ``key`` and its value from the database.
@@ -266,7 +279,7 @@ class JackDB:
         :param key: Database key.
         :return: The value, or None if the key is missing.
         """
-        return self.data_dict.get(key)
+        return deepcopy(self.data_dict.get(key))
 
     def do_get_many(self, keys: list[str]):
         """Retrieve values in bulk.
@@ -276,7 +289,7 @@ class JackDB:
         """
         results = []
         for key in keys:
-            result = (key, self.data_dict.get(key))
+            result = deepcopy((key, self.data_dict.get(key)))
             results.append(result)
         return results
 
@@ -299,7 +312,7 @@ class JackDB:
         db_data[field] = value
         db[key] = db_data
 
-        return db[key]
+        return deepcopy(db[key])
 
     def commit(self) -> list[CommitQueueItem]:
         """Append all pending records to the log file and flush it to disk.
@@ -362,7 +375,6 @@ class JackDB:
                             raise OSError(f"Short journal write: "
                                           f"wrote {written_bytes} of "
                                           f"{len(encoded_string)} bytes")
-
 
                     # Apply the changes
                     replay_file.flush()

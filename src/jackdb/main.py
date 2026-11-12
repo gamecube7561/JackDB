@@ -10,6 +10,7 @@ class JackDB(CoreJackDB):
     def __init__(self, replay_path: str = "", auto_commit: bool = True,
                  commit_size: int = 1, db_name: None | str = None):
         super().__init__(replay_path, auto_commit, commit_size, db_name)
+        self.api = None
         if self.db_name:
             self.serve()
 

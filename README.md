@@ -101,10 +101,12 @@ The log stores one operation per line:
 ```
 
 Opening a database replays records in order, with later operations taking
-precedence. Replay stops at a blank line or invalid JSON and truncates the
-remaining bytes. This recovers from an incomplete final write, but it is not
-a general corruption-repair mechanism: invalid operation records can still
-raise errors, and content after the stopping point is discarded.
+precedence. Replay skips blank lines, malformed JSON, and invalid UTF-8
+and continues reading later records. On open, JackDB truncates these lines
+when they follow the last line that parses as JSON. This removes incomplete
+final writes as well as malformed trailing lines that end with a newline.
+A line that parses as JSON but is rejected during replay, such as an unknown
+operation, is skipped and preserved.
 
 ### Compaction and concurrency
 

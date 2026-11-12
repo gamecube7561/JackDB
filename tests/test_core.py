@@ -560,6 +560,40 @@ def test23():
             return False
     return True
 
+def test24():
+    """Test 24: Skip complete bad journal records and preserve the file."""
+    first = b'{"op":"put","k":"key1","v":{"score":1}}\n'
+    last = b'{"op":"put","k":"key2","v":{"score":2}}\n'
+    cases = {
+        "invalid interior records": first + b'{"op":"bad_op"}\nbad_line\n\n' + last,
+        "interior list key": first + b'{"op":"put","k":["key3"],"v":3}\n' + last,
+        "interior list key2": first + b'{"op":"put","k":[],"v":3}\n' + last,
+        "complete bad final record": first + last + b'{"op":"bad_op"}\n',
+    }
+    expected = {"key1": {"score": 1}, "key2": {"score": 2}}
+    passed = True
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        replay_path = Path(temp_dir) / "db.log"
+        for name, original in cases.items():
+            replay_path.write_bytes(original)
+            for attempt in range(1, 3):
+                try:
+                    db = JackDB(str(replay_path))
+                except (JdbException, TypeError) as exc:
+                    print(f"{name}: open {attempt} raised {type(exc).__name__}: {exc}")
+                    passed = False
+                    break
+
+                if {key: db.do_get(key) for key in db} != expected:
+                    print(f"{name}: unexpected values on open {attempt}.")
+                    passed = False
+                if replay_path.read_bytes() != original:
+                    print(f"{name}: journal bytes changed on open {attempt}.")
+                    passed = False
+
+    return passed
+
 
 def run_tests():
     """Runs the tests."""
@@ -588,7 +622,8 @@ def run_tests():
                  'test20': test20(),
                  'test21': test21(),
                  'test22': test22(),
-                 'test23': test23()
+                 'test23': test23(),
+                 'test24': test24()
                  }
 
     failed_tests = []
