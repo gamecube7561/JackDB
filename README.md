@@ -144,14 +144,15 @@ except JdbException as error:
     print(error.message, error.error_code)
 ```
 
-| Error code | Cause |
-|------------| --- |
+| Error code | Cause                                           |
+|------------|-------------------------------------------------|
 | `1`        | `set` targets a value that is not a dictionary. |
-| `2`        | `set` targets a missing key. |
-| `3`        | Unsupported operation name. |
-| `4`        | Missing operation key or required field. |
-| `5`        | Operation text is not valid JSON. |
-| `6`        | Database name must be set before serving API. |
+| `2`        | `set` targets a missing key.                    |
+| `3`        | Unsupported operation name.                     |
+| `4`        | Missing operation key or required field.        |
+| `5`        | Operation text is not valid JSON.               |
+| `6`        | Database name must be set before serving API.   |
+| `7`        | Operation key field must be of type str.        |
 
 An empty log path raises `ValueError`. Filesystem errors and unsupported
 Python input types may raise standard exceptions; operation validation does
