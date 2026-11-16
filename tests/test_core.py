@@ -1,5 +1,6 @@
 """Driver for the tests."""
 import os
+import sys
 import tempfile
 import json
 import shutil
@@ -10,6 +11,7 @@ from fastapi.testclient import TestClient
 from jackdb import JackDB
 from jackdb.exceptions import JdbException
 from jackdb.api import serve_routes
+from jackdb.logger import logger
 
 
 def init_test():
@@ -560,6 +562,7 @@ def test23():
             return False
     return True
 
+
 def test24():
     """Test 24: Skip complete bad journal records and preserve the file."""
     first = b'{"op":"put","k":"key1","v":{"score":1}}\n'
@@ -640,8 +643,12 @@ def run_tests():
     print("Passed: ", passed, "\nFailed: ", failed)
     if len(failed_tests) == 0:
         print("No tests failed")
+        logger.info("No tests failed")
+        sys.exit(0)
     else:
         print(f"Failed : {failed_tests}")
+        logger.error("Failed : %i", failed)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
