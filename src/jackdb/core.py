@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from copy import deepcopy
 from io import TextIOWrapper
 from json import JSONDecodeError
+from jackdb.logger import logger
 from jackdb.exceptions import JdbException
 from jackdb.operations import _resolve
 from jackdb.commit_record import CommitQueueItem
@@ -48,6 +49,7 @@ class JackDB:
         self._lock = threading.RLock()
 
         if self.replay_path == "":
+            logger.critical("replay_path is required")
             raise ValueError("replay_path is required")
 
         self.load_from_file()
@@ -113,13 +115,16 @@ class JackDB:
         """
         with self._log_lock():
             if not self.has_new_line():
+                logger.info("Adding new line to end of replay file.")
                 self.add_new_line()
 
             self.records = []  # rebuilt below: ``records`` mirrors the file
             data_dict = {}
-            self.log_length, torn, _ = self._replay_log(data_dict, journal=True)
+            self.log_length, torn, bad_records = self._replay_log(data_dict, journal=True)
             self.data_dict = data_dict
             self._log_version = self._file_version(os.stat(self.replay_path))
+            if len(bad_records) > 0:
+                logger.debug("logs rejected on replay.")
             return not torn
 
     @staticmethod
@@ -141,7 +146,7 @@ class JackDB:
             re-writing or skipping already-persisted records. Compaction
             replays with journal=False and tracks its own pending slice.
         :return: Tuple of (number of records applied, whether a torn tail was
-            found and truncated).
+            found and truncated, and records rejected.).
         """
         with open(self.replay_path, "rb") as byte_file:
             raw = byte_file.read()
@@ -173,6 +178,7 @@ class JackDB:
         torn = tail_offset < len(raw)
         if torn:
             with open(self.replay_path, "r+b") as byte_file:
+                logger.error("Torn tail in fail, truncating file.")
                 byte_file.truncate(tail_offset)
         return count, torn, bad_records
 
@@ -186,6 +192,7 @@ class JackDB:
         """
         _, handler_name, args = _resolve(record)
         if args[0] and not isinstance(args[0], str):
+            logger.error("Operation key field must be of type str.")
             raise JdbException("Operation key field must be of type str.", 7)
         args = [db] + args
         return getattr(self, handler_name)(*args)
@@ -322,8 +329,8 @@ class JackDB:
         (up to ``log_length``) are never written twice.
         """
         with self._lock:
-            # No record changes
             if self.log_length == len(self.records):
+                logger.info("No new records to commit.")
                 return []
 
             with self._log_lock(), open(self.replay_path, "a+b", buffering=0) as replay_file:
@@ -334,7 +341,8 @@ class JackDB:
                     # Our version of the dict is the most current
                     data_dict_copy = deepcopy(self.data_dict)
                 else:
-                    # Our dict has been modified, and must reload it from file
+                    # Our file has been modified, and must reload dict from file
+                    logger.warning("Replay file modified, reloading database from file.")
                     data_dict_copy = {}
                     self._replay_log(data_dict_copy)
                     log_stat = os.fstat(replay_file.fileno())
@@ -361,10 +369,13 @@ class JackDB:
                             # Check the amount of bytes written versus string length
                             record.result = result
                             results.append(record)
+                            logger.debug("Applied record %s ", record.args[0])
                             encoded_strings.append(encoded_string)
                         except JdbException as e:
                             record.set_error(e)
                             results.append(record)
+                            logger.debug("Failed applying record %s %s ",
+                                         record.args[0], record.args[1])
                             continue
 
                     # Write to log file
@@ -381,12 +392,15 @@ class JackDB:
                     os.fsync(replay_file.fileno())
                     self._log_version = self._file_version(os.fstat(replay_file.fileno()))
                     self.data_dict = data_dict_copy
-                except OSError:
+                    logger.debug("Changes applied successfully.")
+                except OSError as e:
                     # Rollback the file
+                    logger.exception(e)
                     os.ftruncate(replay_file.fileno(), original_file_size)
                     os.fsync(replay_file.fileno())
                     raise
                 self.log_length = log_offset
+                logger.debug("Commit finished.")
                 return results
 
     def compact(self):
@@ -405,6 +419,7 @@ class JackDB:
         :raises TypeError: If a stored value is not JSON-serializable.
         """
         with self._lock:
+            logger.debug("Compacting replay file.")
             temp_name = ""
             new_records = []
             with self._log_lock():
@@ -413,12 +428,16 @@ class JackDB:
                 # (this instance commits last, so its pending records win).
                 pending = self.records[self.log_length:]
                 pending_dict_copy = {}
+
+                logger.debug("Replaying log file.")
                 self._replay_log(pending_dict_copy)
+                logger.debug("Replay finished.\n Applying pending records.")
 
                 for record in pending:
                     handler = record.handler
                     args = record.args
                     getattr(self, handler)(pending_dict_copy, *args)
+                logger.debug("Pending records applied.")
 
                 dir_fd = os.open(os.path.dirname(self.replay_path) or '.', os.O_RDONLY)
                 try:
@@ -428,16 +447,24 @@ class JackDB:
                     ) as temp_file:
                         temp_name = temp_file.name
 
+                        logger.debug("Writing database to temporary file.")
+
                         for key, value in pending_dict_copy.items():
                             temp_record = {"op": "put", "k": key, "v": value}
                             new_records.append(temp_record)
                             temp_file.write(json.dumps(temp_record) + '\n')
+
+                        logger.debug("Database written to temporary file.\n Flushing to disk.")
+
                         temp_file.flush()
                         os.fsync(temp_file.fileno())
                         os.replace(temp_name, self.replay_path)
                         os.fsync(dir_fd)
                         self._log_version = self._file_version(os.fstat(temp_file.fileno()))
+
+                        logger.debug("Replay file replaced with temporary file.")
                 except Exception:
+                    logger.critical("Error compacting file. Removing temporary file.")
                     if temp_name and os.path.exists(temp_name):
                         os.remove(temp_name)
                     raise
@@ -447,13 +474,14 @@ class JackDB:
 
                 self.records = new_records
                 self.log_length = len(new_records)
+                logger.debug("Compact finished.")
 
     def has_new_line(self):
         """
         Check whether a file has a new line at the end of it.
         :return: Bool: If a new line is found at the end of the file.
         """
-        with open(self.replay_path, 'a+', encoding='utf-8') as f:
+        with open(self.replay_path, 'a+b') as f:
             try:
                 # Move the file pointer to 1 byte before the end of the file
                 f.seek(-1, 2)
