@@ -2,8 +2,9 @@
 
 JackDB is an embedded Python key-value database backed by a JSON Lines
 append-only log. Data is held in memory, replayed from disk when opened, and
-persisted through explicit or automatic commits. A FastAPI integration exposes
-size, get, put, set, and del endpoints.
+persisted through explicit or automatic commits. Reads see an instance's
+committed state. JackDB can compact the log and expose the database through
+FastAPI size, get, put, set, and del endpoints.
 
 ## Installation
 
@@ -16,9 +17,9 @@ From the repository root:
 python -m pip install .
 ```
 
-The project declares `fastapi[standard]` as a dependency. This also installs
-Uvicorn and FastAPI's standard extras. `requirements.txt` contains an exported,
-pinned dependency set; installing the project itself uses `pyproject.toml`.
+Installing the project uses `pyproject.toml`, which declares
+`fastapi[standard]` and `pydantic`. FastAPI's standard extras include Uvicorn.
+`requirements.txt` contains an exported, pinned dependency set.
 
 ## Usage
 
@@ -26,25 +27,26 @@ pinned dependency set; installing the project itself uses `pyproject.toml`.
 from jackdb import JackDB
 
 with JackDB("./mydb.log", auto_commit=False) as db:
-    db.do_operation({"op": "put", "k": "user:1", "v": {"name": "Aoba"}})
+    receipt = db.do_operation({"op": "put", "k": "user:1", "v": {"name": "Aoba"}})
+    print(receipt)  # {'status': 'pending'}
     db.do_operation({"op": "set", "k": "user:1", "f": "state", "v": "NY"})
+    db.commit()
     user = db.do_operation({"op": "get", "k": "user:1"})
     print(user)  # {'name': 'Aoba', 'state': 'NY'}
     print(len(db))  # 1
-# Leaving the context commits pending operations.
 ```
 
 `from jackdb.main import JackDB` also remains supported. Operations accept
-Python dictionaries or JSON strings. Use string keys for predictable JSON
-round trips and JSON-serializable values. Lists and dictionaries cannot be
-keys; tuples in values become lists after reopening.
+Python dictionaries or JSON strings. Use string keys and JSON-serializable
+values. Replay rejects nonempty non-string keys, even if the live write
+accepted them. Tuples in values become lists after reopening.
 
 ### Constructor
 
 ```python
 from jackdb import JackDB
 
-JackDB(replay_path="", auto_commit=True, commit_size=1, db_name="")
+JackDB(replay_path="./mydb.log", auto_commit=True, commit_size=1, db_name=None)
 ```
 
 | Argument | Behavior                                                                                                                   |
@@ -52,13 +54,13 @@ JackDB(replay_path="", auto_commit=True, commit_size=1, db_name="")
 | `replay_path` | Required nonempty string path. Creates the log if absent; its parent directory must already exist.                         |
 | `auto_commit` | Enables automatic commits during `do_operation()`. Defaults to `True`.                                                     |
 | `commit_size` | Commits when pending records **reach** this number. The default `1` commits on the first pending mutation.                 |
-| `db_name` | A nonempty name builds a FastAPI app and attaches it as `db.api`. Defaults to an empty string, leaving `db.api` as `None`. |
+| `db_name` | A nonempty name builds a FastAPI app and attaches it as `db.api`. By default, both `db_name` and `db.api` are `None`. |
 
 ### Operations
 
 Call these through `db.do_operation(record)`:
 
-| `op` | Required fields | Result |
+| `op` | Required fields | Read result or successful commit result |
 | --- | --- | --- |
 | `put` | `k`, `v` | Stores or overwrites a value and returns it. |
 | `del` | `k` | Removes a key; returns `True` if present, otherwise `False`. |
@@ -66,15 +68,14 @@ Call these through `db.do_operation(record)`:
 | `get_many` | `k` (a list of keys) | Returns `(key, value)` tuples in input order; missing values are `None`. |
 | `set` | `k`, `f`, `v` | Sets a field on an existing dictionary value and returns the updated dictionary. |
 
-`put`, `del`, and `set` are journaled. `get` and `get_many` add no records.
+`put`, `del`, and `set` queue a copy of the operation and return
+`{"status": "pending"}`, even when the call triggers an automatic commit.
+`get` and `get_many` read committed values and add no records.
 A stored `None` and a missing key both return `None`; use `key in db` to
 check existence. The database also supports `len(db)`, `db[key]`, iteration
 over keys, and `db.keys()`. `db[key]` raises `KeyError` for a missing key.
-
-The lower-level `do_put`, `do_del`, and `do_set` methods change memory directly
-without journaling. Use `do_operation()` for mutations that must survive a
-normal commit and reopen. Likewise, edit stored objects through operations
-rather than mutating returned dictionaries or lists directly.
+Reads return deep copies of stored values. The lower-level `do_put`, `do_del`,
+and `do_set` methods operate on a supplied dictionary and bypass journaling.
 
 ### Persistence and recovery
 
@@ -82,15 +83,23 @@ rather than mutating returned dictionaries or lists directly.
 from jackdb import JackDB
 
 db = JackDB("./mydb.log", auto_commit=False)
-db.do_operation({"op": "put", "k": "cfg", "v": [1, 2, 3]})
-db.commit()
+results = db.execute_and_commit({"op": "put", "k": "cfg", "v": [1, 2, 3]})
+print(results[-1].result)  # [1, 2, 3]
 ```
 
-Mutations first update memory and queue operation records. `commit()` appends
-pending records, flushes the file, and calls `os.fsync()`. Commit explicitly
-before relying on durability; pending operations may be lost if the process
-exits without committing. The context manager commits on exit, including
-when its body raises an exception; it does not provide rollback.
+`commit()` applies pending mutations in order to a working copy, appends
+accepted records, and publishes the updated in-memory state after flushing
+and syncing the log. It returns a list of `CommitQueueItem` objects in queue
+order, or an empty list when there are no pending operations. Each item
+exposes `.result` on success or `.error` if the operation raised
+`JdbException` during application. For example, a rejected `set` is skipped
+while other valid writes in the batch can still commit.
+
+Use `execute_and_commit()` with a mutation to queue it and immediately commit
+it alongside any earlier pending writes. To inspect a batch of queued writes,
+disable automatic commits and inspect the result of an explicit `commit()`.
+Pending writes can be lost if the process exits before committing. The
+context manager commits on exit even if its body raises an exception.
 
 The log stores one operation per line:
 
@@ -106,7 +115,8 @@ and continues reading later records. On open, JackDB truncates these lines
 when they follow the last line that parses as JSON. This removes incomplete
 final writes as well as malformed trailing lines that end with a newline.
 A line that parses as JSON but is rejected during replay, such as an unknown
-operation, is skipped and preserved.
+operation, is skipped and preserved. On open, JackDB adds a newline to a
+log that lacks a final line break before replaying it.
 
 ### Compaction and concurrency
 
@@ -119,14 +129,18 @@ db.compact()
 
 `compact()` rewrites the log as one `put` record per live key, removing
 superseded records and deletion tombstones. It includes pending mutations,
-so it also commits. The replacement is written and synced in a temporary
+so successful compaction also persists those writes. If applying a pending
+operation raises an error, compaction raises it. Use `commit()` to get
+individual operation results. The replacement is written and synced in a temporary
 file beside the log, installed with `os.replace()`, and followed by a directory
 sync. Filesystem and serialization errors propagate to the caller.
 
 A reentrant lock serializes `do_operation()`, `commit()`, and `compact()`
 within an instance. A sidecar file at `<replay_path>.lock` serializes log
-loading, commits, and compaction across cooperating processes. Compaction
-replays the latest log before applying the instance's pending operations.
+loading, commits, and compaction across cooperating processes. A commit with
+pending writes replays the log if it has changed since the instance last
+loaded or wrote it. Compaction always replays the latest log before applying
+pending writes.
 
 Other instances do not automatically refresh their in-memory data after a
 writer commits. File locking does not make multiple operations a transaction
@@ -154,11 +168,14 @@ except JdbException as error:
 | `4`        | Missing operation key or required field.        |
 | `5`        | Operation text is not valid JSON.               |
 | `6`        | Database name must be set before serving API.   |
-| `7`        | Operation key field must be of type str.        |
+| `7`        | Replay found a nonempty non-string key.         |
 
 An empty log path raises `ValueError`. Filesystem errors and unsupported
 Python input types may raise standard exceptions; operation validation does
 not cover every possible malformed input.
+
+JackDB uses Python's standard logging. Configure the `jackdb` logger in your
+application to see diagnostics for replay, commits, and compaction.
 
 ## HTTP API
 
@@ -211,8 +228,10 @@ src/jackdb/core.py        # Storage, replay, operations, commit, compaction
 src/jackdb/api.py         # FastAPI application and routes
 src/jackdb/api_models.py  # Models for FastAPI
 src/jackdb/operations.py  # Operation specifications and validation
+src/jackdb/commit_record.py  # Queued operations and commit results
+src/jackdb/logger.py      # Library logger
 src/jackdb/exceptions.py  # JdbException
-tests/test_core.py       # Custom runner with 18 database/API checks
+tests/test_core.py       # Custom runner with 24 database/API checks
 tests/test_items.py      # Test data
 ```
 
@@ -231,8 +250,7 @@ PYTHONPATH=src uv run --no-sync python tests/test_core.py
 
 Setting `PYTHONPATH=src` ensures tests use the checkout, including on systems
 where editable-install discovery is unreliable. The custom runner prints
-passed and failed counts; inspect that report, since failed checks do not
-currently produce a nonzero process exit status.
+passed and failed counts and exits with status 1 if any check fails.
 
 To run the same lint command as GitHub Actions:
 
@@ -244,7 +262,7 @@ pylint $(git ls-files '*.py')
 GitHub Actions runs Pylint on pushes for Python 3.10 through 3.14.
 
 After changing dependencies in `pyproject.toml`, update the lockfile and
-regenerate the requirements export:
+regenerate the requirements export. The lockfile is local and ignored by Git.
 
 ```bash
 uv lock
