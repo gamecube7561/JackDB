@@ -8,10 +8,12 @@ FastAPI size, get, put, set, and del endpoints.
 
 [![Pylint](https://github.com/gamecube7561/JackDB/actions/workflows/pylint.yml/badge.svg)](https://github.com/gamecube7561/JackDB/actions/workflows/pylint.yml)
 [![Tests](https://github.com/gamecube7561/JackDB/actions/workflows/tests.yml/badge.svg)](https://github.com/gamecube7561/JackDB/actions/workflows/tests.yml)
-## Installation
+## Quick Start
 
 Requires Python 3.10+ and a Unix-like system such as Linux or macOS. File
 locking uses `fcntl`, so native Windows is currently unsupported.
+
+By default, JackDB attempts to commit each write immediately.
 
 From the repository root:
 
@@ -19,6 +21,17 @@ From the repository root:
 python -m pip install .
 ```
 
+
+
+```python
+from jackdb import JackDB
+
+with JackDB("./mydb.log") as db:
+    db.do_operation({"op": "put", "k": "user:1", "v": {"name": "Aoba"}})
+    db.do_operation({"op": "set", "k": "user:1", "f": "state", "v": "NY"})
+    user = db.do_operation({"op": "get", "k": "user:1"})
+    print(user)  # {'name': 'Aoba', 'state': 'NY'}
+```
 Installing the project uses `pyproject.toml`, which declares
 `fastapi[standard]` and `pydantic`. FastAPI's standard extras include Uvicorn.
 `requirements.txt` contains an exported, pinned dependency set.
