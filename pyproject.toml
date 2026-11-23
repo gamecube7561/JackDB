@@ -1,14 +1,22 @@
 [project]
 name = "JackDB"
 version = "0.3.2"
+description = "Simple embedded key-value database"
+readme = "README.md"
 requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = [
     "fastapi[standard]>=0.162.0",
     "pydantic>=2.14.2",
 ]
 
+[project.urls]
+Repository = "https://github.com/gamecube7561/JackDB"
+Issues = "https://github.com/gamecube7561/JackDB/issues"
+
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]

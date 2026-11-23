@@ -6,22 +6,22 @@ persisted through explicit or automatic commits. Reads see an instance's
 committed state. JackDB can compact the log and expose the database through
 FastAPI size, get, put, set, and del endpoints.
 
+[![PyPI](https://img.shields.io/pypi/v/JackDB)](https://pypi.org/project/JackDB/)
 [![Pylint](https://github.com/gamecube7561/JackDB/actions/workflows/pylint.yml/badge.svg)](https://github.com/gamecube7561/JackDB/actions/workflows/pylint.yml)
 [![Tests](https://github.com/gamecube7561/JackDB/actions/workflows/tests.yml/badge.svg)](https://github.com/gamecube7561/JackDB/actions/workflows/tests.yml)
+
 ## Quick Start
 
 Requires Python 3.10+ and a Unix-like system such as Linux or macOS. File
 locking uses `fcntl`, so native Windows is currently unsupported.
 
-By default, JackDB attempts to commit each write immediately.
-
-From the repository root:
+Install JackDB from [PyPI](https://pypi.org/project/JackDB/):
 
 ```bash
-python -m pip install .
+python -m pip install JackDB
 ```
 
-
+By default, JackDB attempts to commit each write immediately.
 
 ```python
 from jackdb import JackDB
@@ -32,9 +32,6 @@ with JackDB("./mydb.log") as db:
     user = db.do_operation({"op": "get", "k": "user:1"})
     print(user)  # {'name': 'Aoba', 'state': 'NY'}
 ```
-Installing the project uses `pyproject.toml`, which declares
-`fastapi[standard]` and `pydantic`. FastAPI's standard extras include Uvicorn.
-`requirements.txt` contains an exported, pinned dependency set.
 
 ## Usage
 
@@ -64,24 +61,24 @@ from jackdb import JackDB
 JackDB(replay_path="./mydb.log", auto_commit=True, commit_size=1, db_name=None)
 ```
 
-| Argument | Behavior                                                                                                                   |
-| --- |----------------------------------------------------------------------------------------------------------------------------|
-| `replay_path` | Required nonempty string path. Creates the log if absent; its parent directory must already exist.                         |
-| `auto_commit` | Enables automatic commits during `do_operation()`. Defaults to `True`.                                                     |
-| `commit_size` | Commits when pending records **reach** this number. The default `1` commits on the first pending mutation.                 |
-| `db_name` | A nonempty name builds a FastAPI app and attaches it as `db.api`. By default, both `db_name` and `db.api` are `None`. |
+| Argument      | Behavior                                                                                                              |
+|---------------|-----------------------------------------------------------------------------------------------------------------------|
+| `replay_path` | Required nonempty string path. Creates the log if absent; its parent directory must already exist.                    |
+| `auto_commit` | Enables automatic commits during `do_operation()`. Defaults to `True`.                                                |
+| `commit_size` | Commits when pending records **reach** this number. The default `1` commits on the first pending mutation.            |
+| `db_name`     | A nonempty name builds a FastAPI app and attaches it as `db.api`. By default, both `db_name` and `db.api` are `None`. |
 
 ### Operations
 
 Call these through `db.do_operation(record)`:
 
-| `op` | Required fields | Read result or successful commit result |
-| --- | --- | --- |
-| `put` | `k`, `v` | Stores or overwrites a value and returns it. |
-| `del` | `k` | Removes a key; returns `True` if present, otherwise `False`. |
-| `get` | `k` | Returns a value, or `None` when absent. |
-| `get_many` | `k` (a list of keys) | Returns `(key, value)` tuples in input order; missing values are `None`. |
-| `set` | `k`, `f`, `v` | Sets a field on an existing dictionary value and returns the updated dictionary. |
+| `op`       | Required fields      | Read result or successful commit result                                          |
+|------------|----------------------|----------------------------------------------------------------------------------|
+| `put`      | `k`, `v`             | Stores or overwrites a value and returns it.                                     |
+| `del`      | `k`                  | Removes a key; returns `True` if present, otherwise `False`.                     |
+| `get`      | `k`                  | Returns a value, or `None` when absent.                                          |
+| `get_many` | `k` (a list of keys) | Returns `(key, value)` tuples in input order; missing values are `None`.         |
+| `set`      | `k`, `f`, `v`        | Sets a field on an existing dictionary value and returns the updated dictionary. |
 
 `put`, `del`, and `set` queue a copy of the operation and return
 `{"status": "pending"}`, even when the call triggers an automatic commit.
@@ -255,6 +252,11 @@ The API accepts the core `JackDB` type, and the public class inherits its
 database methods. The core module has no dependency on the API layer.
 
 ## Development
+
+To install from a local checkout, run `python -m pip install .` from the
+repository root. `pyproject.toml` declares `fastapi[standard]` and
+`pydantic` as dependencies. FastAPI's standard extras include Uvicorn.
+`requirements.txt` contains an exported, pinned dependency set.
 
 Run commands from the repository root. With [uv](https://docs.astral.sh/uv/):
 
