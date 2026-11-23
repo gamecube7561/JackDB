@@ -7,7 +7,7 @@ committed state. JackDB can compact the log and expose the database through
 FastAPI size, get, put, set, and del endpoints.
 
 [![Pylint](https://github.com/gamecube7561/JackDB/actions/workflows/pylint.yml/badge.svg)](https://github.com/gamecube7561/JackDB/actions/workflows/pylint.yml)
-
+[![Tests](https://github.com/gamecube7561/JackDB/actions/workflows/tests.yml/badge.svg)](https://github.com/gamecube7561/JackDB/actions/workflows/tests.yml)
 ## Installation
 
 Requires Python 3.10+ and a Unix-like system such as Linux or macOS. File
